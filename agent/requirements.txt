@@ -1,0 +1,4 @@
+# Local Agent Dependencies
+websockets>=12.0
+python-dotenv>=1.0.0
+mss>=9.0.0

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="J.A.R.V.I.S. — Personal AI Assistant by Ashish Laheri">
+    <meta name="theme-color" content="#0a0e17">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JARVIS">
+    <title>J.A.R.V.I.S.</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%2300d4ff' stroke-width='3'/><circle cx='50' cy='50' r='15' fill='%2300d4ff' opacity='0.8'/></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- ═══ LOGIN SCREEN ═══ -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="login-arc-reactor">
+                <div class="arc-ring arc-ring-1"></div>
+                <div class="arc-ring arc-ring-2"></div>
+                <div class="arc-core"></div>
+            </div>
+            <h1 class="login-title">J.A.R.V.I.S.</h1>
+            <p class="login-subtitle">Just A Rather Very Intelligent System</p>
+            <div class="login-form">
+                <input type="password" id="password-input" placeholder="Enter access code" autocomplete="off">
+                <button id="login-btn">INITIALIZE</button>
+            </div>
+            <p id="login-error" class="login-error"></p>
+        </div>
+    </div>
+
+    <!-- ═══ MAIN HUD ═══ -->
+    <div id="main-screen" class="screen">
+        <!-- Status Bar -->
+        <header class="status-bar">
+            <div class="status-left">
+                <span class="status-indicator" id="connection-status"></span>
+                <span class="status-text">J.A.R.V.I.S. v3.0</span>
+            </div>
+            <div class="status-right">
+                <span id="clock"></span>
+            </div>
+        </header>
+
+        <!-- Chat Area -->
+        <div id="chat-area" class="chat-area">
+            <!-- Messages will be injected here -->
+        </div>
+
+        <!-- Central Orb -->
+        <div class="orb-container">
+            <div id="jarvis-orb" class="jarvis-orb" title="Tap to speak">
+                <div class="orb-ring orb-ring-outer"></div>
+                <div class="orb-ring orb-ring-middle"></div>
+                <div class="orb-ring orb-ring-inner"></div>
+                <div class="orb-core">
+                    <svg id="mic-icon" class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                </div>
+                <div class="orb-particles" id="orb-particles"></div>
+            </div>
+            <p class="orb-label" id="orb-label">Tap to speak</p>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <button class="action-btn" data-skill="briefing" title="Daily Briefing">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                <span>Briefing</span>
+            </button>
+            <button class="action-btn" data-skill="weather" title="Weather">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+                <span>Weather</span>
+            </button>
+            <button class="action-btn" data-skill="news" title="News">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                <span>News</span>
+            </button>
+            <button class="action-btn" data-skill="reminders" title="Reminders">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span>Reminders</span>
+            </button>
+        </div>
+
+        <!-- Text Input -->
+        <div class="input-bar">
+            <input type="text" id="text-input" placeholder="Type a command..." autocomplete="off">
+            <button id="send-btn" class="send-btn" title="Send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="notification-toast" class="notification-toast hidden">
+        <div class="toast-icon">🔔</div>
+        <div class="toast-content">
+            <strong id="toast-title"></strong>
+            <p id="toast-body"></p>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
