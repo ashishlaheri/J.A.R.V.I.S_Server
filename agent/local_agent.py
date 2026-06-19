@@ -373,6 +373,236 @@ def get_system_info() -> str:
             return f"System: {platform.system()} {platform.release()}"
 
 
+def play_alarm(duration_sec: int = 8) -> str:
+    """Play a loud repeating alarm sound through PC speakers."""
+    try:
+        # Use PowerShell to play system sounds + beeps
+        ps_script = f"""
+$duration = {duration_sec}
+$end = (Get-Date).AddSeconds($duration)
+while ((Get-Date) -lt $end) {{
+    [System.Console]::Beep(1500, 200)
+    [System.Console]::Beep(800, 200)
+    [System.Console]::Beep(1500, 200)
+    [System.Console]::Beep(800, 200)
+    [System.Media.SystemSounds]::Exclamation.Play()
+    Start-Sleep -Milliseconds 100
+}}
+"""
+        subprocess.Popen(
+            ['powershell', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps_script],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return f"Alarm sounding for {duration_sec} seconds on your PC, Sir!"
+    except Exception as e:
+        return f"Alarm error: {e}"
+
+
+def show_warning_popup(message: str = "") -> str:
+    """Show a large scary warning popup on the PC screen."""
+    msg = message or (
+        "WARNING: This laptop is being monitored remotely by J.A.R.V.I.S. "
+        "Your activity has been logged. The owner has been notified."
+    )
+    # Escape quotes for PowerShell
+    msg_safe = msg.replace('"', '`"').replace("'", "`'")
+    try:
+        ps_script = f"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "J.A.R.V.I.S. Security Alert"
+$form.Size = New-Object System.Drawing.Size(600, 300)
+$form.StartPosition = "CenterScreen"
+$form.TopMost = $true
+$form.BackColor = [System.Drawing.Color]::FromArgb(20, 0, 0)
+$form.FormBorderStyle = "FixedDialog"
+$label = New-Object System.Windows.Forms.Label
+$label.Text = "{msg_safe}"
+$label.ForeColor = [System.Drawing.Color]::Red
+$label.Font = New-Object System.Drawing.Font("Arial", 14, [System.Drawing.FontStyle]::Bold)
+$label.Dock = "Fill"
+$label.TextAlign = "MiddleCenter"
+$label.Padding = New-Object System.Windows.Forms.Padding(20)
+$btn = New-Object System.Windows.Forms.Button
+$btn.Text = "I UNDERSTAND"
+$btn.Dock = "Bottom"
+$btn.Height = 50
+$btn.BackColor = [System.Drawing.Color]::DarkRed
+$btn.ForeColor = [System.Drawing.Color]::White
+$btn.Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+$btn.Add_Click({{ $form.Close() }})
+$form.Controls.Add($label)
+$form.Controls.Add($btn)
+$form.ShowDialog()
+"""
+        subprocess.Popen(
+            ['powershell', '-NonInteractive', '-Command', ps_script],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return "Warning popup displayed on your PC screen, Sir."
+    except Exception as e:
+        return f"Warning popup error: {e}"
+
+
+def freeze_input(seconds: int = 10) -> str:
+    """Block keyboard and mouse input for N seconds (Windows only)."""
+    try:
+        import ctypes
+        def _do_freeze():
+            ctypes.windll.user32.BlockInput(True)
+            time.sleep(seconds)
+            ctypes.windll.user32.BlockInput(False)
+        import threading
+        t = threading.Thread(target=_do_freeze, daemon=True)
+        t.start()
+        return f"Keyboard and mouse frozen for {seconds} seconds on your PC, Sir."
+    except Exception as e:
+        return f"Freeze input error: {e}"
+
+
+def logoff_user() -> str:
+    """Force log off the current Windows user session."""
+    try:
+        subprocess.run(
+            ['shutdown', '/l', '/f'],
+            capture_output=True, timeout=5
+        )
+        return "Logging off current user, Sir."
+    except Exception as e:
+        return f"Logoff error: {e}"
+
+
+def disable_wifi() -> str:
+    """Disable the WiFi adapter."""
+    try:
+        result = subprocess.run(
+            ['netsh', 'interface', 'set', 'interface', 'Wi-Fi', 'disable'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return "Wi-Fi disabled on your PC, Sir."
+        return f"Wi-Fi disable failed: {result.stderr.strip() or 'Check adapter name'}"
+    except Exception as e:
+        return f"WiFi disable error: {e}"
+
+
+def enable_wifi() -> str:
+    """Re-enable the WiFi adapter."""
+    try:
+        result = subprocess.run(
+            ['netsh', 'interface', 'set', 'interface', 'Wi-Fi', 'enable'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return "Wi-Fi re-enabled on your PC, Sir."
+        return f"Wi-Fi enable failed: {result.stderr.strip()}"
+    except Exception as e:
+        return f"WiFi enable error: {e}"
+
+
+def get_running_apps() -> str:
+    """List all visible running applications (not background services)."""
+    try:
+        result = subprocess.run(
+            ['tasklist', '/FO', 'CSV', '/NH'],
+            capture_output=True, text=True, timeout=10
+        )
+        lines = result.stdout.strip().split('\n')
+        # Parse CSV: "Name","PID","Session","Num","Mem"
+        seen = set()
+        apps = []
+        skip = {
+            'svchost.exe', 'csrss.exe', 'smss.exe', 'wininit.exe', 'winlogon.exe',
+            'services.exe', 'lsass.exe', 'fontdrvhost.exe', 'dwm.exe', 'spoolsv.exe',
+            'SearchIndexer.exe', 'WmiPrvSE.exe', 'dllhost.exe', 'conhost.exe',
+            'RuntimeBroker.exe', 'tasklist.exe', 'sihost.exe', 'ctfmon.exe',
+        }
+        for line in lines[:50]:
+            try:
+                parts = line.strip().strip('"').split('","')
+                name = parts[0].strip('"')
+                mem = parts[4].strip('"').replace(',', '').replace(' K', 'KB') if len(parts) > 4 else ''
+                name_lower = name.lower()
+                if name_lower not in seen and name not in skip and not name_lower.startswith('system'):
+                    seen.add(name_lower)
+                    apps.append(f"{name} ({mem})")
+            except Exception:
+                pass
+        if apps:
+            return "Running apps: " + ", ".join(apps[:15])
+        return "No visible applications found."
+    except Exception as e:
+        return f"Process list error: {e}"
+
+
+async def take_screenshot_and_upload(ws) -> str:
+    """Take screenshot, encode as base64, send to cloud server."""
+    try:
+        import io
+        screenshot_bytes = None
+
+        # Method 1: PIL
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab()
+            # Resize to max 1280px wide to keep base64 size manageable
+            w, h = img.size
+            if w > 1280:
+                ratio = 1280 / w
+                img = img.resize((1280, int(h * ratio)))
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=70, optimize=True)
+            screenshot_bytes = buf.getvalue()
+        except ImportError:
+            pass
+
+        # Method 2: PowerShell → temp file → read
+        if not screenshot_bytes:
+            tmp = Path.home() / "AppData" / "Local" / "Temp" / "jarvis_tmp_ss.jpg"
+            ps_script = (
+                f'Add-Type -AssemblyName System.Windows.Forms, System.Drawing;'
+                f'$s=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;'
+                f'$b=New-Object System.Drawing.Bitmap($s.Width,$s.Height);'
+                f'$g=[System.Drawing.Graphics]::FromImage($b);'
+                f'$g.CopyFromScreen(0,0,0,0,$b.Size);'
+                f'$b.Save("{tmp}", [System.Drawing.Imaging.ImageFormat]::Jpeg);'
+                f'$g.Dispose();$b.Dispose()'
+            )
+            result = subprocess.run(
+                ['powershell', '-NonInteractive', '-Command', ps_script],
+                capture_output=True, timeout=15
+            )
+            if tmp.exists():
+                with open(tmp, 'rb') as f:
+                    screenshot_bytes = f.read()
+                tmp.unlink(missing_ok=True)
+
+        if not screenshot_bytes:
+            return "Screenshot capture failed. Try: pip install Pillow"
+
+        import base64
+        img_b64 = base64.b64encode(screenshot_bytes).decode()
+
+        # Send to cloud server as agent_data
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "screenshot",
+            "image": img_b64,
+        }))
+
+        # Also save locally
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = Path.home() / "Desktop" / f"jarvis_{timestamp}.jpg"
+        with open(save_path, 'wb') as f:
+            f.write(screenshot_bytes)
+
+        return f"Screenshot captured and sent to your phone, Sir. ({len(screenshot_bytes)//1024}KB)"
+
+    except Exception as e:
+        return f"Screenshot upload error: {e}"
+
+
 def execute_command(command: str, target: str = "") -> str:
     """Route a local command to the appropriate handler."""
     command = command.lower().strip()
@@ -382,13 +612,14 @@ def execute_command(command: str, target: str = "") -> str:
         return open_app(target)
     elif command in ("close_app", "close", "kill", "quit"):
         return close_app(target)
-    elif command in ("lock", "lock_pc", "lock_screen"):
+    elif command in ("lock", "lock_pc", "lock_screen", "lock_now"):
         return lock_pc()
     elif command in ("volume", "set_volume", "vol"):
         return set_volume(target)
     elif command in ("mute", "unmute", "toggle_mute"):
         return mute_volume()
     elif command in ("screenshot", "screen_capture", "snap"):
+        # Note: screenshot_and_upload is handled separately (needs ws)
         return take_screenshot()
     elif command in ("open_url", "browse", "open_browser"):
         if target:
@@ -399,15 +630,31 @@ def execute_command(command: str, target: str = "") -> str:
         return "No URL provided, Sir."
     elif command in ("system_info", "sysinfo", "status", "pc_status"):
         return get_system_info()
+    elif command in ("alarm", "play_alarm", "siren"):
+        secs = int(target) if target.isdigit() else 8
+        return play_alarm(secs)
+    elif command in ("warning", "warn", "warning_popup", "alert_popup"):
+        return show_warning_popup(target)
+    elif command in ("freeze", "freeze_input", "block_input"):
+        secs = int(target) if target.isdigit() else 10
+        return freeze_input(secs)
+    elif command in ("logoff", "log_off", "force_logoff", "kick_user"):
+        return logoff_user()
+    elif command in ("disable_wifi", "wifi_off", "cut_internet"):
+        return disable_wifi()
+    elif command in ("enable_wifi", "wifi_on", "restore_internet"):
+        return enable_wifi()
+    elif command in ("running_apps", "who_is_running", "processes", "list_apps"):
+        return get_running_apps()
     elif command in ("shutdown", "shut_down"):
         return "Shutdown blocked for safety, Sir. Use the Start Menu to shut down."
     elif command in ("restart", "reboot"):
         return "Restart blocked for safety, Sir. Use the Start Menu to restart."
     else:
-        # Unknown command — try opening it as an app anyway
         if target:
             return open_app(target)
-        return f"Unknown command: {command}. Sir."
+        return f"Unknown command: {command}, Sir."
+
 
 
 # ══════════════════════════════════════════════════════
@@ -476,10 +723,14 @@ async def connect_and_run():
                             target = action.get("target", "")
                             print(f"[COMMAND] {command} -> '{target}'")
 
-                            result = execute_command(command, target)
+                            # screenshot_upload needs ws reference — handle separately
+                            if command in ("screenshot_upload", "see_screen", "live_screenshot"):
+                                result = await take_screenshot_and_upload(ws)
+                            else:
+                                result = execute_command(command, target)
                             print(f"[RESULT]  {result}")
 
-                            # Send result back to cloud server
+                            # Send result text back to cloud server
                             await ws.send(json.dumps({
                                 "type": "chat",
                                 "text": result

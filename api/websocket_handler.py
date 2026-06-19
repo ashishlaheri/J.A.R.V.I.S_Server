@@ -48,14 +48,16 @@ async def handle_websocket(ws: WebSocket):
             msg_type = data.get("type", "chat")
             text = data.get("text", "").strip()
 
-            if not text:
+            if not text and msg_type != "agent_data":
                 continue
 
-            print(f"[USER] {text}")
+            print(f"[USER] {text or msg_type}")
 
             if msg_type == "action":
-                # Quick action buttons (weather, news, etc.)
-                await _handle_action(ws, data.get("skill", ""))
+                await _handle_action(ws, data.get("skill", ""), data)
+            elif msg_type == "agent_data":
+                # Local agent is sending data back (screenshot, status, etc.)
+                await _handle_agent_data(ws, data)
             else:
                 # Chat / voice input — classify and route
                 await _handle_chat(ws, text)
@@ -189,11 +191,54 @@ async def _handle_chat(ws: WebSocket, text: str):
         await _send_response(ws, "Something went wrong processing your request, Sir. Please try again.")
 
 
-async def _handle_action(ws: WebSocket, skill: str):
+async def _handle_agent_data(ws: WebSocket, data: dict):
+    """Handle data sent back from the local agent (screenshots, status, etc.)."""
+    subtype = data.get("subtype", "")
+    print(f"[AGENT_DATA] subtype={subtype}")
+
+    # Broadcast to all web UI clients (everyone except the agent socket itself)
+    broadcast_payload = {"type": "agent_data", "subtype": subtype}
+
+    if subtype == "screenshot":
+        broadcast_payload["image"] = data.get("image", "")
+        broadcast_payload["text"] = "Live screenshot from your PC, Sir."
+    elif subtype == "status":
+        broadcast_payload["text"] = data.get("text", "")
+    else:
+        broadcast_payload["text"] = data.get("text", "Data received from agent.")
+
+    for client in connected_clients:
+        if client != ws:
+            try:
+                await client.send_json(broadcast_payload)
+            except Exception:
+                pass
+
+
+async def _handle_action(ws: WebSocket, skill: str, raw_data: dict = None):
     """Handle quick action button presses."""
     await ws.send_json({"type": "status", "state": "processing"})
 
     try:
+        # Security panel commands — broadcast to the local agent
+        if skill == "security" and raw_data:
+            command = raw_data.get("command", "") or raw_data.get("text", "")
+            action_payload = {
+                "type": "response",
+                "text": f"Security command '{command}' sent to your PC.",
+                "action": {"type": "local_command", "command": command, "target": ""}
+            }
+            # Send to all OTHER clients (the local agent)
+            for client in connected_clients:
+                if client != ws:
+                    try:
+                        await client.send_json(action_payload)
+                    except Exception:
+                        pass
+            # Acknowledge to web client
+            await ws.send_json({"type": "status", "state": "processing"})
+            return
+
         if skill == "weather":
             text = await weather.get_weather()
         elif skill == "news":

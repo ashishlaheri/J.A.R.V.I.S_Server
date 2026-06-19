@@ -289,6 +289,19 @@
                         showNotification(data.title, data.body);
                         break;
 
+                    case 'agent_data':
+                        // Data from local agent (screenshots, status)
+                        removeProcessing();
+                        if (data.subtype === 'screenshot' && data.image) {
+                            showScreenshot(data.image);
+                            addMessage('jarvis', '📸 Live screenshot received from your PC, Sir.', true);
+                        } else if (data.text) {
+                            addMessage('jarvis', data.text, true);
+                        }
+                        // Re-enable all sec buttons
+                        document.querySelectorAll('.sec-btn.loading').forEach(b => b.classList.remove('loading'));
+                        break;
+
                     case 'error':
                         removeProcessing();
                         addMessage('jarvis', data.message || 'Something went wrong, Sir.');
@@ -650,6 +663,7 @@
     // ── Init ──────────────────────────────────────────
     initSpeechRecognition();
     initParticles();
+    initSecurityPanel();
 
     // ── PWA Install ───────────────────────────────────
     let deferredPrompt;
@@ -669,5 +683,107 @@
             audioCtx.resume();
         }
     }, { once: true });
+
+    // ═══════════════════════════════════════════════════
+    //  SECURITY PANEL
+    // ═══════════════════════════════════════════════════
+    function initSecurityPanel() {
+        const secToggleBtn = $('#btn-security-toggle');
+        const secPanel     = $('#security-panel');
+        const ssViewer     = $('#screenshot-viewer');
+        const ssImg        = $('#screenshot-img');
+        const ssTime       = $('#screenshot-time');
+        const closeSSBtn   = $('#close-screenshot');
+
+        if (!secToggleBtn || !secPanel) return;
+
+        // Toggle panel open/close
+        secToggleBtn.addEventListener('click', () => {
+            const isHidden = secPanel.classList.contains('hidden');
+            secPanel.classList.toggle('hidden', !isHidden);
+            secToggleBtn.classList.toggle('active', isHidden);
+            if (navigator.vibrate) navigator.vibrate(15);
+            sfxButtonTap();
+        });
+
+        // Security command labels (shown in chat)
+        const cmdLabels = {
+            'screenshot_upload': '📸 Requesting live screenshot from your PC...',
+            'lock_now':          '🔒 Locking your PC now, Sir.',
+            'alarm':             '🚨 Sounding alarm on your PC, Sir!',
+            'warning':           '⚠️ Showing warning popup on your PC, Sir.',
+            'freeze':            '❄️ Freezing keyboard and mouse for 10 seconds, Sir.',
+            'logoff':            '🚪 Logging off current user on your PC, Sir.',
+            'disable_wifi':      '📶 Cutting Wi-Fi connection on your PC, Sir.',
+            'running_apps':      '💻 Fetching running apps from your PC...',
+        };
+
+        // Wire up all security buttons
+        document.querySelectorAll('.sec-btn[data-sec-cmd]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cmd = btn.dataset.secCmd;
+                if (!cmd) return;
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    addMessage('jarvis', '⚠️ Not connected to server, Sir. Please reconnect.');
+                    return;
+                }
+
+                // Show feedback in chat
+                const label = cmdLabels[cmd] || `Executing ${cmd} on your PC...`;
+                addMessage('user', label.replace(/^[^\s]+ /, ''));
+                addMessage('jarvis', label, true);
+
+                // Set loading state
+                btn.classList.add('loading');
+                setTimeout(() => btn.classList.remove('loading'), 8000); // auto-remove after 8s
+
+                // Send command to cloud server → forwarded to local agent
+                ws.send(JSON.stringify({
+                    type: 'action',
+                    skill: 'security',
+                    text: cmd,
+                    command: cmd,
+                    action: {
+                        type: 'local_command',
+                        command: cmd,
+                        target: ''
+                    }
+                }));
+
+                if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
+                sfxSend();
+            });
+        });
+
+        // Close screenshot viewer
+        if (closeSSBtn) {
+            closeSSBtn.addEventListener('click', () => {
+                if (ssViewer) ssViewer.classList.add('hidden');
+            });
+        }
+    }
+
+    function showScreenshot(base64Image) {
+        const ssViewer = $('#screenshot-viewer');
+        const ssImg    = $('#screenshot-img');
+        const ssTime   = $('#screenshot-time');
+        const secPanel = $('#security-panel');
+
+        if (!ssViewer || !ssImg) return;
+
+        // Make sure the security panel is visible
+        if (secPanel && secPanel.classList.contains('hidden')) {
+            secPanel.classList.remove('hidden');
+            const toggleBtn = $('#btn-security-toggle');
+            if (toggleBtn) toggleBtn.classList.add('active');
+        }
+
+        ssImg.src = `data:image/jpeg;base64,${base64Image}`;
+        if (ssTime) ssTime.textContent = `Captured at ${new Date().toLocaleTimeString()}`;
+        ssViewer.classList.remove('hidden');
+
+        // Scroll to show it
+        ssViewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 
 })();
