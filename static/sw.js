@@ -1,39 +1,48 @@
-// J.A.R.V.I.S. Service Worker — offline caching + push notifications
-const CACHE_NAME = 'jarvis-v3';
-const STATIC_ASSETS = ['/', '/static/css/style.css', '/static/js/app.js'];
+// J.A.R.V.I.S. Service Worker v3.1
+const CACHE_NAME = 'jarvis-v3.1';
+const ASSETS = [
+    '/',
+    '/static/css/style.css',
+    '/static/js/app.js',
+    '/manifest.json'
+];
 
-self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-    );
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-        )
-    );
-    self.clients.claim();
-});
-
-self.addEventListener('fetch', (event) => {
-    // Network first, fall back to cache
-    event.respondWith(
-        fetch(event.request).catch(() => caches.match(event.request))
+// Install — cache shell assets
+self.addEventListener('install', (e) => {
+    e.waitUntil(
+        caches.open(CACHE_NAME)
+            .then(cache => cache.addAll(ASSETS))
+            .then(() => self.skipWaiting())
     );
 });
 
-// Push notifications
-self.addEventListener('push', (event) => {
-    const data = event.data ? event.data.json() : { title: 'J.A.R.V.I.S.', body: 'You have a notification.' };
-    event.waitUntil(
-        self.registration.showNotification(data.title, {
-            body: data.body,
-            icon: '/static/icon.png',
-            badge: '/static/icon.png',
-            vibrate: [200, 100, 200]
-        })
+// Activate — clean old caches
+self.addEventListener('activate', (e) => {
+    e.waitUntil(
+        caches.keys().then(keys =>
+            Promise.all(keys
+                .filter(k => k !== CACHE_NAME)
+                .map(k => caches.delete(k))
+            )
+        ).then(() => self.clients.claim())
+    );
+});
+
+// Fetch — network first, cache fallback (keeps data fresh)
+self.addEventListener('fetch', (e) => {
+    // Skip WebSocket and API requests
+    if (e.request.url.includes('/ws') || e.request.url.includes('/api/')) return;
+
+    e.respondWith(
+        fetch(e.request)
+            .then(response => {
+                // Cache successful responses
+                if (response.ok) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+                }
+                return response;
+            })
+            .catch(() => caches.match(e.request))
     );
 });

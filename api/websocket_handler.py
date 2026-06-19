@@ -147,6 +147,14 @@ async def _handle_chat(ws: WebSocket, text: str):
         target = params.get("target", "")
         response_text = f"Sending command to your local agent, Sir."
         action = {"type": "local_command", "command": command, "target": target}
+        
+        # Broadcast the command to the agent (all other connected clients)
+        for client in connected_clients:
+            if client != ws:
+                try:
+                    await client.send_json({"type": "response", "action": action})
+                except Exception:
+                    pass
 
     else:
         # General chat — send to AI
