@@ -26,6 +26,10 @@ class ReminderRequest(BaseModel):
     text: str
     due_at: str = None
 
+class DeleteReminderRequest(BaseModel):
+    id: int = None
+    text: str = None
+
 class MemoryRequest(BaseModel):
     key: str
     value: str = None
@@ -58,6 +62,19 @@ async def list_reminders():
 async def add_reminder(req: ReminderRequest):
     return {"message": await reminders.add_reminder(req.text, req.due_at)}
 
+@router.delete("/reminders", dependencies=[Depends(require_auth)])
+async def delete_reminder(req: DeleteReminderRequest):
+    if req.id:
+        return {"message": await reminders.delete_reminder(reminder_id=req.id)}
+    elif req.text:
+        return {"message": await reminders.delete_reminder(text_search=req.text)}
+    else:
+        return {"message": await reminders.clear_all_reminders()}
+
+@router.delete("/reminders/all", dependencies=[Depends(require_auth)])
+async def clear_all_reminders():
+    return {"message": await reminders.clear_all_reminders()}
+
 
 # ── Memory ──────────────────────────────────────────
 @router.get("/memory", dependencies=[Depends(require_auth)])
@@ -72,4 +89,4 @@ async def store_memory(req: MemoryRequest):
 # ── Health ──────────────────────────────────────────
 @router.get("/health")
 async def health():
-    return {"status": "operational", "system": "J.A.R.V.I.S. v3.0"}
+    return {"status": "operational", "system": "J.A.R.V.I.S. v3.1"}

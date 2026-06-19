@@ -132,7 +132,7 @@
         return audioCtx;
     }
 
-    function playBeep(freq = 800, duration = 0.08, type = 'sine', volume = 0.08) {
+    function playBeep(freq = 800, duration = 0.1, type = 'sine', volume = 0.15) {
         try {
             const ctx = getAudioCtx();
             const osc = ctx.createOscillator();
@@ -149,11 +149,34 @@
         } catch (e) { /* Audio not supported */ }
     }
 
-    function sfxActivate() { playBeep(600, 0.06); setTimeout(() => playBeep(900, 0.06), 70); }
-    function sfxDeactivate() { playBeep(900, 0.06); setTimeout(() => playBeep(600, 0.06), 70); }
-    function sfxMessage() { playBeep(1200, 0.04, 'sine', 0.04); }
-    function sfxSend() { playBeep(500, 0.05, 'triangle', 0.05); }
-    function sfxError() { playBeep(200, 0.15, 'sawtooth', 0.06); }
+    // ── Sci-Fi Sound Effects ──
+    function sfxActivate() {
+        playBeep(500, 0.08, 'sine', 0.15);
+        setTimeout(() => playBeep(800, 0.08, 'sine', 0.15), 80);
+        setTimeout(() => playBeep(1100, 0.06, 'sine', 0.1), 160);
+    }
+    function sfxDeactivate() {
+        playBeep(1100, 0.06, 'sine', 0.1);
+        setTimeout(() => playBeep(700, 0.08, 'sine', 0.12), 80);
+    }
+    function sfxMessage() {
+        playBeep(900, 0.05, 'sine', 0.1);
+        setTimeout(() => playBeep(1400, 0.04, 'sine', 0.08), 60);
+    }
+    function sfxSend() {
+        playBeep(400, 0.06, 'triangle', 0.1);
+        setTimeout(() => playBeep(600, 0.04, 'triangle', 0.08), 50);
+    }
+    function sfxError() {
+        playBeep(150, 0.2, 'sawtooth', 0.12);
+        setTimeout(() => playBeep(100, 0.15, 'sawtooth', 0.08), 150);
+    }
+    function sfxConnect() {
+        playBeep(400, 0.08, 'sine', 0.1);
+        setTimeout(() => playBeep(600, 0.08, 'sine', 0.12), 100);
+        setTimeout(() => playBeep(900, 0.1, 'sine', 0.15), 200);
+    }
+    function sfxButtonTap() { playBeep(700, 0.04, 'sine', 0.08); }
 
     // ── Clock ─────────────────────────────────────────
     function updateClock() {
@@ -236,6 +259,7 @@
             connStatus.classList.add('connected');
             showReconnecting(false);
             reconnectAttempts = 0;
+            sfxConnect();
             // First message: auth token
             ws.send(JSON.stringify({ token }));
         };
@@ -589,6 +613,7 @@
         btn.addEventListener('click', () => {
             const skill = btn.dataset.skill;
             if (skill) {
+                sfxButtonTap();
                 sendAction(skill);
                 if (navigator.vibrate) navigator.vibrate(20);
             }

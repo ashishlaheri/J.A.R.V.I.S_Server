@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║          J.A.R.V.I.S  v3.0  —  Cloud Server                  ║
+║          J.A.R.V.I.S  v3.1  —  Cloud Server                  ║
 ║   FastAPI + WebSocket + Edge-TTS + Multi-Provider AI          ║
 ║   By Ashish Laheri                                            ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -9,14 +9,50 @@ Run locally:   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 Docker:        docker compose up
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from api.routes import router as api_router
-from api.websocket_handler import handle_websocket
+from api.websocket_handler import handle_websocket, broadcast_notification
+from skills import reminders
 import os
+import asyncio
 
-app = FastAPI(title="J.A.R.V.I.S.", version="3.0")
+
+# ── Reminder Scheduler ─────────────────────────────
+async def reminder_checker():
+    """Background task that checks for due reminders every 60 seconds."""
+    while True:
+        try:
+            due = await reminders.get_due_reminders()
+            for r in due:
+                await broadcast_notification(
+                    "⏰ Reminder",
+                    r["text"]
+                )
+                print(f"[REMINDER] Fired: {r['text']}")
+        except Exception as e:
+            print(f"[REMINDER] Check error: {e}")
+        await asyncio.sleep(60)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup & shutdown events."""
+    # Startup
+    print("=" * 55)
+    print("  J.A.R.V.I.S. v3.1 — Server Starting")
+    print("=" * 55)
+    task = asyncio.create_task(reminder_checker())
+    print("[SCHEDULER] Reminder checker started (60s interval)")
+    yield
+    # Shutdown
+    task.cancel()
+    print("[SCHEDULER] Reminder checker stopped")
+
+
+app = FastAPI(title="J.A.R.V.I.S.", version="3.1", lifespan=lifespan)
 
 # ── API routes ──────────────────────────────────────
 app.include_router(api_router)

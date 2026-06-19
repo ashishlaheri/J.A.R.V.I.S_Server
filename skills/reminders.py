@@ -2,7 +2,6 @@
 
 import aiosqlite
 import datetime
-import asyncio
 from config import settings
 
 DB = settings.DB_PATH
@@ -48,10 +47,65 @@ async def get_reminders(include_done: bool = False) -> str:
         if not rows:
             return "No active reminders, Sir. You're all clear."
         parts = []
-        for r in rows:
-            due = f" (due {r['due_at']})" if r['due_at'] else ""
-            parts.append(f"{r['text']}{due}")
+        for i, r in enumerate(rows, 1):
+            due = f" due {r['due_at']}" if r['due_at'] else ""
+            parts.append(f"{i}. {r['text']}{due}")
         return "Your reminders: " + ". ".join(parts) + "."
+
+
+async def delete_reminder(reminder_id: int = None, text_search: str = None) -> str:
+    """Delete a reminder by ID or by text search."""
+    await _ensure_table()
+    async with aiosqlite.connect(DB) as db:
+        if reminder_id is not None:
+            cursor = await db.execute("SELECT text FROM reminders WHERE id = ?", (reminder_id,))
+            row = await cursor.fetchone()
+            if not row:
+                return f"No reminder found with ID {reminder_id}, Sir."
+            await db.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            await db.commit()
+            return f"Removed reminder: '{row[0]}', Sir."
+        elif text_search:
+            cursor = await db.execute(
+                "SELECT id, text FROM reminders WHERE done = 0 AND LOWER(text) LIKE LOWER(?) LIMIT 1",
+                (f"%{text_search}%",)
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return f"No active reminder matching '{text_search}' found, Sir."
+            await db.execute("DELETE FROM reminders WHERE id = ?", (row[0],))
+            await db.commit()
+            return f"Removed reminder: '{row[1]}', Sir."
+        else:
+            return "Please specify which reminder to delete, Sir."
+
+
+async def clear_all_reminders() -> str:
+    """Delete ALL reminders (both done and not done)."""
+    await _ensure_table()
+    async with aiosqlite.connect(DB) as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM reminders")
+        count = (await cursor.fetchone())[0]
+        if count == 0:
+            return "No reminders to clear, Sir."
+        await db.execute("DELETE FROM reminders")
+        await db.commit()
+    return f"Cleared all {count} reminders, Sir."
+
+
+async def mark_done(reminder_id: int = None, text_search: str = None) -> str:
+    """Mark a reminder as done."""
+    await _ensure_table()
+    async with aiosqlite.connect(DB) as db:
+        if reminder_id is not None:
+            await db.execute("UPDATE reminders SET done = 1 WHERE id = ?", (reminder_id,))
+        elif text_search:
+            await db.execute(
+                "UPDATE reminders SET done = 1 WHERE done = 0 AND LOWER(text) LIKE LOWER(?)",
+                (f"%{text_search}%",)
+            )
+        await db.commit()
+    return "Marked as done, Sir."
 
 
 async def get_due_reminders() -> list[dict]:
