@@ -1,26 +1,139 @@
-"""Weather skill — free weather via wttr.in (no API key) + OpenWeatherMap (with key)."""
+"""Weather skill — uses Open-Meteo (100% free, no API key, works everywhere).
+
+Open-Meteo is a free, open-source weather API:
+- No API key required
+- No registration
+- No rate limits for personal use
+- Works from any server (AWS, Docker, etc.)
+- Returns JSON reliably
+
+Fallback chain: Open-Meteo → wttr.in → OpenWeatherMap (if key configured)
+"""
 
 import aiohttp
 from config import settings
 
-OWM_URL = "https://api.openweathermap.org/data/2.5/weather"
-OWM_FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
-WTTR_URL = "https://wttr.in"  # Free, no API key needed
+# Open-Meteo API (100% free, no key needed, works from data centers)
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
+
+# WMO Weather interpretation codes → human descriptions
+WMO_CODES = {
+    0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
+    45: "foggy", 48: "freezing fog",
+    51: "light drizzle", 53: "moderate drizzle", 55: "dense drizzle",
+    61: "slight rain", 63: "moderate rain", 65: "heavy rain",
+    71: "slight snow", 73: "moderate snow", 75: "heavy snow",
+    77: "snow grains", 80: "slight rain showers", 81: "moderate rain showers",
+    82: "violent rain showers", 85: "slight snow showers", 86: "heavy snow showers",
+    95: "thunderstorm", 96: "thunderstorm with slight hail", 99: "thunderstorm with heavy hail",
+}
+
+# Cache city → coordinates to avoid repeated geocoding
+_geo_cache: dict[str, tuple[float, float]] = {}
 
 
-async def _get_weather_free(city: str) -> str:
-    """Free weather via wttr.in — no API key needed."""
+async def _geocode(session: aiohttp.ClientSession, city: str) -> tuple[float, float, str] | None:
+    """Convert city name to latitude/longitude using Open-Meteo geocoding."""
+    # Check cache first
+    city_lower = city.lower().strip()
+    if city_lower in _geo_cache:
+        lat, lon = _geo_cache[city_lower]
+        return lat, lon, city
+
+    try:
+        params = {"name": city, "count": 1, "language": "en", "format": "json"}
+        async with session.get(GEOCODE_URL, params=params, timeout=aiohttp.ClientTimeout(total=5)) as r:
+            if r.status != 200:
+                return None
+            data = await r.json()
+            results = data.get("results", [])
+            if not results:
+                return None
+            loc = results[0]
+            lat = loc["latitude"]
+            lon = loc["longitude"]
+            name = loc.get("name", city)
+            _geo_cache[city_lower] = (lat, lon)
+            return lat, lon, name
+    except Exception as e:
+        print(f"[WEATHER] Geocode error for '{city}': {e}")
+        return None
+
+
+async def _get_weather_openmeteo(city: str) -> str | None:
+    """Get current weather from Open-Meteo (free, no API key, reliable)."""
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"{WTTR_URL}/{city}?format=j1"
+            # Step 1: Geocode the city name
+            geo = await _geocode(session, city)
+            if not geo:
+                return None
+            lat, lon, resolved_name = geo
+
+            # Step 2: Get weather data
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "current_weather": "true",
+                "hourly": "relativehumidity_2m,apparent_temperature",
+                "forecast_days": 1,
+                "timezone": "auto",
+            }
+            async with session.get(
+                WEATHER_URL, params=params,
+                timeout=aiohttp.ClientTimeout(total=8)
+            ) as r:
+                if r.status != 200:
+                    print(f"[WEATHER] Open-Meteo returned status {r.status}")
+                    return None
+                data = await r.json()
+
+                current = data.get("current_weather", {})
+                temp = round(current.get("temperature", 0))
+                wind = round(current.get("windspeed", 0))
+                code = current.get("weathercode", 0)
+                desc = WMO_CODES.get(code, "unknown conditions")
+
+                # Get humidity and feels-like from hourly (closest hour)
+                hourly = data.get("hourly", {})
+                humidity_list = hourly.get("relativehumidity_2m", [])
+                feels_list = hourly.get("apparent_temperature", [])
+
+                # Use the most recent available value
+                humidity = humidity_list[0] if humidity_list else "N/A"
+                feels = round(feels_list[0]) if feels_list else temp
+
+                return (
+                    f"Currently {temp}°C and {desc} in {resolved_name}, Sir. "
+                    f"Feels like {feels}°C with {humidity}% humidity and wind at {wind} km/h."
+                )
+    except Exception as e:
+        print(f"[WEATHER] Open-Meteo error: {e}")
+        return None
+
+
+async def _get_weather_wttr(city: str) -> str | None:
+    """Fallback: free weather via wttr.in."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://wttr.in/{city}?format=j1"
             async with session.get(
                 url,
-                timeout=aiohttp.ClientTimeout(total=8),
-                headers={"User-Agent": "JARVIS/3.1"}
+                timeout=aiohttp.ClientTimeout(total=6),
+                headers={
+                    "User-Agent": "curl/7.68.0",
+                    "Accept": "application/json"
+                }
             ) as r:
                 if r.status != 200:
                     return None
-                data = await r.json()
+                text = await r.text()
+                # wttr.in sometimes returns HTML from data centers
+                if text.strip().startswith("<") or "<!DOCTYPE" in text[:100]:
+                    return None
+                import json
+                data = json.loads(text)
                 current = data["current_condition"][0]
                 temp = current["temp_C"]
                 feels = current["FeelsLikeC"]
@@ -28,18 +141,22 @@ async def _get_weather_free(city: str) -> str:
                 humidity = current["humidity"]
                 return (f"Currently {temp}°C and {desc} in {city}, Sir. "
                         f"Feels like {feels}°C with {humidity}% humidity.")
-    except Exception:
+    except Exception as e:
+        print(f"[WEATHER] wttr.in error: {e}")
         return None
 
 
-async def _get_weather_owm(city: str) -> str:
+async def _get_weather_owm(city: str) -> str | None:
     """Weather via OpenWeatherMap (requires API key)."""
     if not settings.OPENWEATHER_API_KEY:
         return None
     try:
         async with aiohttp.ClientSession() as session:
             params = {"q": city, "appid": settings.OPENWEATHER_API_KEY, "units": "metric"}
-            async with session.get(OWM_URL, params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
+            async with session.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params=params, timeout=aiohttp.ClientTimeout(total=8)
+            ) as r:
                 if r.status != 200:
                     return None
                 data = await r.json()
@@ -49,71 +166,75 @@ async def _get_weather_owm(city: str) -> str:
                 humidity = data["main"]["humidity"]
                 return (f"Currently {temp}°C and {desc} in {city}, Sir. "
                         f"Feels like {feels}°C with {humidity}% humidity.")
-    except Exception:
+    except Exception as e:
+        print(f"[WEATHER] OWM error: {e}")
         return None
 
 
 async def get_weather(city: str = None) -> str:
-    """Get weather — tries OpenWeatherMap first, falls back to wttr.in."""
+    """Get weather with triple-fallback: Open-Meteo → wttr.in → OWM."""
     city = city or settings.WEATHER_CITY
+    print(f"[WEATHER] Fetching weather for: {city}")
 
-    # Try OpenWeatherMap first (if API key configured)
+    # 1. Open-Meteo (most reliable from data centers)
+    result = await _get_weather_openmeteo(city)
+    if result:
+        return result
+
+    # 2. wttr.in (sometimes blocked from AWS)
+    result = await _get_weather_wttr(city)
+    if result:
+        return result
+
+    # 3. OpenWeatherMap (requires API key)
     result = await _get_weather_owm(city)
     if result:
         return result
 
-    # Fallback to free wttr.in
-    result = await _get_weather_free(city)
-    if result:
-        return result
-
-    return f"Could not fetch weather for {city} right now, Sir. Please try again."
+    return f"Could not fetch weather for {city} right now, Sir. All three weather sources are unavailable."
 
 
 async def get_forecast(city: str = None) -> str:
+    """Get 3-day forecast from Open-Meteo."""
     city = city or settings.WEATHER_CITY
 
-    # Try wttr.in forecast (free)
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"{WTTR_URL}/{city}?format=j1"
-            async with session.get(
-                url,
-                timeout=aiohttp.ClientTimeout(total=8),
-                headers={"User-Agent": "JARVIS/3.1"}
-            ) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    forecasts = data.get("weather", [])[:3]
-                    parts = []
-                    for day in forecasts:
-                        date = day["date"]
-                        max_temp = day["maxtempC"]
-                        min_temp = day["mintempC"]
-                        desc = day["hourly"][4]["weatherDesc"][0]["value"].lower()
-                        parts.append(f"{date}: {min_temp}-{max_temp}°C, {desc}")
-                    if parts:
-                        return f"Forecast for {city}, Sir. " + ". ".join(parts) + "."
-    except Exception:
-        pass
+            geo = await _geocode(session, city)
+            if not geo:
+                return f"Could not find location '{city}', Sir."
+            lat, lon, resolved_name = geo
 
-    # Fallback to OWM
-    if not settings.OPENWEATHER_API_KEY:
-        return f"Forecast unavailable for {city} right now, Sir."
-    try:
-        async with aiohttp.ClientSession() as session:
-            params = {"q": city, "appid": settings.OPENWEATHER_API_KEY, "units": "metric", "cnt": 8}
-            async with session.get(OWM_FORECAST_URL, params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "daily": "temperature_2m_max,temperature_2m_min,weathercode",
+                "forecast_days": 3,
+                "timezone": "auto",
+            }
+            async with session.get(
+                WEATHER_URL, params=params,
+                timeout=aiohttp.ClientTimeout(total=8)
+            ) as r:
                 if r.status != 200:
-                    return f"Could not fetch forecast for {city}, Sir."
+                    return f"Forecast unavailable for {city}, Sir."
                 data = await r.json()
-                items = data.get("list", [])[:3]
+                daily = data.get("daily", {})
+                dates = daily.get("time", [])
+                max_temps = daily.get("temperature_2m_max", [])
+                min_temps = daily.get("temperature_2m_min", [])
+                codes = daily.get("weathercode", [])
+
                 parts = []
-                for item in items:
-                    time_str = item["dt_txt"].split(" ")[1][:5]
-                    temp = round(item["main"]["temp"])
-                    desc = item["weather"][0]["description"]
-                    parts.append(f"{time_str} — {temp}°C, {desc}")
-                return f"Forecast for {city}: " + ". ".join(parts) + "."
+                for i in range(min(3, len(dates))):
+                    desc = WMO_CODES.get(codes[i], "unknown")
+                    parts.append(
+                        f"{dates[i]}: {round(min_temps[i])}-{round(max_temps[i])}°C, {desc}"
+                    )
+
+                if parts:
+                    return f"Forecast for {resolved_name}, Sir. " + ". ".join(parts) + "."
+                return f"Forecast data unavailable for {city}, Sir."
     except Exception as e:
+        print(f"[WEATHER] Forecast error: {e}")
         return f"Forecast unavailable, Sir. {e}"

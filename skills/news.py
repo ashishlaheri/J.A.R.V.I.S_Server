@@ -3,11 +3,11 @@
 import aiohttp
 import xml.etree.ElementTree as ET
 
-# Multiple RSS sources for reliability
+# Multiple RSS sources for reliability (tried in order)
 RSS_FEEDS = [
-    ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
-    ("Reuters", "https://feeds.reuters.com/reuters/topNews"),
-    ("Google News", "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"),
+    ("Google News India", "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"),
+    ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("BBC Top", "https://feeds.bbci.co.uk/news/rss.xml"),
 ]
 
 
