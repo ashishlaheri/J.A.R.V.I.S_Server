@@ -457,27 +457,40 @@
     // ═══════════════════════════════════════════════════
     //  AUDIO PLAYBACK
     // ═══════════════════════════════════════════════════
+    let currentAudioSource = null;
+
     function playAudio(base64) {
         try {
             if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+            if (currentAudioSource) { currentAudioSource.stop(); currentAudioSource = null; }
+            
+            const ctx = getAudioCtx();
+            // Resume context if suspended (iOS requirement)
+            if (ctx.state === 'suspended') ctx.resume();
+
             const bytes = atob(base64);
             const buffer = new Uint8Array(bytes.length);
             for (let i = 0; i < bytes.length; i++) buffer[i] = bytes.charCodeAt(i);
-            const blob = new Blob([buffer], { type: 'audio/mp3' });
-            const url = URL.createObjectURL(blob);
-            currentAudio = new Audio(url);
+            
             setOrbState('speaking');
-            currentAudio.play().catch(() => setOrbState('idle'));
-            currentAudio.onended = () => {
+            
+            ctx.decodeAudioData(buffer.buffer, (decodedData) => {
+                const source = ctx.createBufferSource();
+                source.buffer = decodedData;
+                source.connect(ctx.destination);
+                currentAudioSource = source;
+                
+                source.onended = () => {
+                    setOrbState('idle');
+                    currentAudioSource = null;
+                };
+                
+                source.start(0);
+            }, (err) => {
+                console.error("Audio decode error", err);
                 setOrbState('idle');
-                URL.revokeObjectURL(url);
-                currentAudio = null;
-            };
-            currentAudio.onerror = () => {
-                setOrbState('idle');
-                URL.revokeObjectURL(url);
-                currentAudio = null;
-            };
+            });
+
         } catch (e) {
             console.error('Audio playback error:', e);
             setOrbState('idle');
@@ -523,9 +536,12 @@
 
     function toggleListening() {
         // Tap while speaking → stop audio
-        if (isSpeaking && currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
+        if (isSpeaking && (currentAudio || currentAudioSource)) {
+            if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+            if (currentAudioSource) {
+                try { currentAudioSource.stop(); } catch(e){}
+                currentAudioSource = null;
+            }
             setOrbState('idle');
             sfxDeactivate();
             return;
