@@ -87,9 +87,9 @@ class SpeechEngine:
     STOP_WORDS = {"stop", "quiet", "shut up", "enough", "okay stop", "that's enough"}
 
     # Energy threshold for the background listener.
-    # Speaker audio bleeds into mic at ~200-600. Human voice ~1500+.
-    # 3000 avoids false triggers. Lower if you have to shout.
-    MIC_THRESHOLD = int(os.getenv("MIC_INTERRUPT_THRESHOLD", "3000"))
+    # We lowered this to 1200 so you don't have to shout. We filter out
+    # Jarvis's own voice by specifically requiring the wake word to interrupt.
+    MIC_THRESHOLD = int(os.getenv("MIC_INTERRUPT_THRESHOLD", "1200"))
 
     def __init__(self):
         pygame.mixer.init()
@@ -162,17 +162,26 @@ class SpeechEngine:
                 phrase = recognizer.recognize_google(
                     audio, language='en-in'
                 ).lower().strip()
-                print(f"[INTERRUPT] Heard mid-speech: '{phrase}'")
+                # We only print if it contains a wake word or stop word to avoid console spam from his own voice
+                is_stop = any(w in phrase for w in self.STOP_WORDS)
+                has_wake_word = "jarvis" in phrase
 
-                if any(w in phrase for w in self.STOP_WORDS):
-                    # Pure stop — just cut audio, don't pass to AI
+                if is_stop:
+                    print(f"[INTERRUPT] Heard mid-speech: '{phrase}'")
                     print("[JARVIS] Stop word detected — cutting speech.")
                     self.stop()
-                else:
-                    # Real command said mid-response — save it and cut audio
-                    print(f"[JARVIS] Mid-speech command captured: '{phrase}'")
-                    self.pending_command = phrase
+                elif has_wake_word:
+                    print(f"[INTERRUPT] Heard mid-speech: '{phrase}'")
+                    command = phrase.replace("hey jarvis", "").replace("jarvis", "").strip()
+                    if command:
+                        print(f"[JARVIS] Mid-speech command captured: '{command}'")
+                        self.pending_command = command
+                    else:
+                        print("[JARVIS] Mid-speech wake word detected — cutting speech and awaiting command.")
                     self.stop()
+                else:
+                    # Ignore anything else (it's either background noise or Jarvis hearing his own voice)
+                    pass
 
             except Exception:
                 pass   # recognition noise — ignore silently
