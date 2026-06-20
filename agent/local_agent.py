@@ -682,7 +682,7 @@ async def connect_and_run():
             SERVER,
             ping_interval=20,
             ping_timeout=10,
-            extra_headers=extra_headers,
+            additional_headers=extra_headers,
             open_timeout=15
         ) as ws:
             # Send auth token immediately
