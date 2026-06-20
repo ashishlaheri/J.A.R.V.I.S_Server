@@ -732,7 +732,7 @@ async def connect_and_run():
 
                             # Send result text back to cloud server
                             await ws.send(json.dumps({
-                                "type": "chat",
+                                "type": "agent_response",
                                 "text": result
                             }))
 

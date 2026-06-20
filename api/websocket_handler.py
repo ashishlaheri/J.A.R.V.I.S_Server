@@ -58,6 +58,14 @@ async def handle_websocket(ws: WebSocket):
             elif msg_type == "agent_data":
                 # Local agent is sending data back (screenshot, status, etc.)
                 await _handle_agent_data(ws, data)
+            elif msg_type == "agent_response":
+                # Text response from local agent execution
+                for client in connected_clients:
+                    if client != ws:
+                        try:
+                            await client.send_json({"type": "response", "text": text})
+                        except Exception:
+                            pass
             else:
                 # Chat / voice input — classify and route
                 await _handle_chat(ws, text)
