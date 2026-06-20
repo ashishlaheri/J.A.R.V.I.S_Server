@@ -175,6 +175,10 @@ async def _handle_chat(ws: WebSocket, text: str):
             response_text = "Standing by, Sir. I'll be here when you need me."
 
         elif intent == "local_command":
+            if len(connected_clients) <= 1:
+                await ws.send_json({"type": "agent_data", "text": "Local agent is not connected, Sir. Command cancelled."})
+                return
+
             command = params.get("command", "")
             target = params.get("target", "")
             response_text = f"Sending command to your local agent, Sir."
@@ -230,6 +234,10 @@ async def _handle_action(ws: WebSocket, skill: str, raw_data: dict = None):
     try:
         # Security panel commands — broadcast to the local agent
         if skill == "security" and raw_data:
+            if len(connected_clients) <= 1:
+                await ws.send_json({"type": "agent_data", "text": "Local agent is offline, Sir. Action cancelled."})
+                return
+                
             command = raw_data.get("command", "") or raw_data.get("text", "")
             action_payload = {
                 "type": "response",
