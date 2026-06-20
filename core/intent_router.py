@@ -157,14 +157,15 @@ class IntentRouter:
 
         if intent == "set_reminder":
             # Remove the trigger phrase to get the reminder text
-            text = re.sub(r"^(?:remind me to |set (?:a )?reminder (?:to |for )?|remember to )", "", q, flags=re.IGNORECASE).strip()
+            # We use non-anchored matching to allow "please remind me to" etc.
+            text = re.sub(r".*?(?:remind me to |set (?:a )?reminder (?:to |for )?|remember to )", "", q, flags=re.IGNORECASE).strip()
             params["text"] = text or query
 
         elif intent == "delete_reminder":
             if re.search(r"\ball\b", q):
                 params["all"] = True
             else:
-                text = re.sub(r"^(?:delete |remove |cancel |clear )(?:the )?(?:reminder )?(?:about |for )?", "", q, flags=re.IGNORECASE).strip()
+                text = re.sub(r".*?(?:delete |remove |cancel |clear )(?:the )?(?:reminder )?(?:about |for )?", "", q, flags=re.IGNORECASE).strip()
                 params["text"] = text
                 params["all"] = False
 

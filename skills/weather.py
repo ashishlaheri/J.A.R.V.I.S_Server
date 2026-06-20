@@ -130,7 +130,8 @@ async def _get_weather_wttr(city: str) -> str | None:
                     return None
                 text = await r.text()
                 # wttr.in sometimes returns HTML from data centers
-                if text.strip().startswith("<") or "<!DOCTYPE" in text[:100]:
+                content_type = r.headers.get("Content-Type", "")
+                if "application/json" not in content_type:
                     return None
                 import json
                 data = json.loads(text)

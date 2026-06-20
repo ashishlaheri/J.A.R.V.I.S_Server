@@ -12,10 +12,12 @@ router = APIRouter(prefix="/api")
 # ── Auth dependency ─────────────────────────────────
 def require_auth(authorization: str = Header(None)):
     if not authorization:
-        raise HTTPException(401, "Missing token")
-    token = authorization.replace("Bearer ", "")
+        raise HTTPException(status_code=401, detail="Missing token")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token format")
+    token = authorization.split(" ")[1]
     if not verify_token(token):
-        raise HTTPException(401, "Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 # ── Models ──────────────────────────────────────────

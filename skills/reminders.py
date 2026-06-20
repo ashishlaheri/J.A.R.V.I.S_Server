@@ -108,6 +108,8 @@ async def mark_done(reminder_id: int = None, text_search: str = None) -> str:
     return "Marked as done, Sir."
 
 
+_broadcasted_reminders = set()
+
 async def get_due_reminders() -> list[dict]:
     """Return reminders that are due now (for the scheduler)."""
     await _ensure_table()
@@ -119,7 +121,14 @@ async def get_due_reminders() -> list[dict]:
             (now,)
         )
         rows = await cursor.fetchall()
-        result = [{"id": r["id"], "text": r["text"], "due_at": r["due_at"]} for r in rows]
+        
+        # Filter out any that were already broadcasted in this runtime
+        result = []
+        for r in rows:
+            if r["id"] not in _broadcasted_reminders:
+                result.append({"id": r["id"], "text": r["text"], "due_at": r["due_at"]})
+                _broadcasted_reminders.add(r["id"])
+                
         if result:
             ids = [r["id"] for r in result]
             placeholders = ",".join("?" * len(ids))
