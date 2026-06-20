@@ -5,7 +5,7 @@
 ╚══════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, datetime, subprocess, threading
+import os, sys, datetime, subprocess, threading, re
 from threading import Thread
 from dotenv import load_dotenv
 load_dotenv()
@@ -286,13 +286,19 @@ class Skills:
 
     @staticmethod
     def open_ui_elements(speech, **_):
-        webbrowser.open("https://uiverse.io"); speech.speak("Opening UI Verse, Sir.")
+        speech.speak("Opening UI elements cheat sheet, Sir.")
+        webbrowser.open("https://quickref.me/html")
+
+    @staticmethod
+    def open_file_explorer(speech, **_):
+        speech.speak("Accessing your file system now, Sir.")
+        # Opens the current user's home directory (C:\Users\Username)
+        os.startfile(os.path.expanduser('~'))
 
     @staticmethod
     def open_notepad(speech, **_):
-        try: os.startfile(Config.NOTEPAD_PATH)
-        except Exception: os.system("notepad.exe")
-        speech.speak("Notepad is open, Sir.")
+        speech.speak("Opening Notepad, Sir.")
+        os.system("start notepad")
 
     @staticmethod
     def open_cmd(speech, **_):
@@ -460,50 +466,52 @@ class IntentRouter:
         self.speech = speech
         self.ai = ai
         self.INTENT_MAP = [
-            (["search"],                            Skills.wikipedia_search),
-            (["the news", "bbc news"],              Skills.read_bbc_news),
-            (["show news", "inshorts"],             Skills.open_inshorts),
-            (["tech news"],                         Skills.open_tech_news),
-            (["the time", "what time"],             Skills.tell_time),
-            (["wifi password"],                     Skills.show_wifi_passwords),
-            (["open youtube"],                      Skills.open_youtube),
-            (["play a video", "play video"],        Skills.play_youtube),
-            (["open google"],                       Skills.open_google),
-            (["stack overflow", "open ask"],        Skills.open_stackoverflow),
-            (["open ums"],                          Skills.open_ums),
-            (["elements of html", "ui elements"],  Skills.open_ui_elements),
-            (["notepad"],                           Skills.open_notepad),
-            (["command prompt"],                    Skills.open_cmd),
-            (["open camera"],                       Skills.open_camera),
-            (["look at this", "what is this", "what do you see",
-              "describe what you see", "view this", "analyze this", "analyse this",
-              "can you analyse", "can you analyze", "can you see", "check this",
-              "what's in front", "scan the room", "look around", "what's here",
-              "what can you see", "jarvis look", "use your eyes", "identify this",
-              "observe this", "tell me what you see", "what do i have",
-              "what am i holding", "what's this", "show me what you see",
-              "use the camera", "activate camera", "visual"],
+            ([r"search wikipedia", r"wikipedia", r"who is"], Skills.wikipedia_search),
+            ([r"the news", r"bbc news"],              Skills.read_bbc_news),
+            ([r"show news", r"inshorts"],             Skills.open_inshorts),
+            ([r"tech news"],                         Skills.open_tech_news),
+            ([r"the time", r"what time"],             Skills.tell_time),
+            ([r"wifi password"],                     Skills.show_wifi_passwords),
+            ([r"open youtube"],                      Skills.open_youtube),
+            ([r"play a video", r"play video"],        Skills.play_youtube),
+            ([r"open google"],                       Skills.open_google),
+            ([r"stack overflow", r"open ask"],        Skills.open_stackoverflow),
+            ([r"open ums"],                          Skills.open_ums),
+            ([r"elements of html", r"ui elements"],  Skills.open_ui_elements),
+            ([r"file manager", r"open my files", r"file explorer", r"open files"], Skills.open_file_explorer),
+            ([r"notepad"],                           Skills.open_notepad),
+            ([r"command prompt"],                    Skills.open_cmd),
+            ([r"open camera"],                       Skills.open_camera),
+            ([r"look at this", r"what is this", r"what do you see",
+              r"describe what you see", r"view this", r"analyze this", r"analyse this",
+              r"can you analyse", r"can you analyze", r"can you see", r"check this",
+              r"what's in front", r"scan the room", r"look around", r"what's here",
+              r"what can you see", r"jarvis look", r"use your eyes", r"identify this",
+              r"observe this", r"tell me what you see", r"what do i have",
+              r"what am i holding", r"what's this", r"show me what you see",
+              r"use the camera", r"activate camera", r"visual"],
                                                     Skills.look_and_describe),
-            (["sleep", "shut down", "goodbye"],     Skills.shutdown),
-            (["begin the party", "rock the party"],Skills.play_party_music),
-            (["send message", "whatsapp"],          Skills.send_whatsapp),
-            (["power mode", "full power"],          Skills.power_mode),
-            (["create a website"],                  Skills.create_website),
-            (["about me"],                          Skills.about_me),
-            (["joke", "jokes"],                     Skills.tell_joke),
-            (["breakup"],                           Skills.breakup),
-            (["bored"],                             Skills.bored),
-            (["hello buddy", "hello jarvis"],       Skills.greet),
-            (["you ready", "are you ready"],        Skills.status),
-            (["how are you"],                       Skills.how_are_you),
-            (["your creator", "who made you"],      Skills.about_creator),
-            (["who are you"],                       Skills.who_are_you),
-            (["thank you", "thanks"],               Skills.thank_you),
+            ([r"sleep", r"shut down", r"goodbye"],     Skills.shutdown),
+            ([r"begin the party", r"rock the party"],Skills.play_party_music),
+            ([r"send message", r"whatsapp"],          Skills.send_whatsapp),
+            ([r"power mode", r"full power"],          Skills.power_mode),
+            ([r"create a website"],                  Skills.create_website),
+            ([r"about me"],                          Skills.about_me),
+            ([r"joke", r"jokes"],                     Skills.tell_joke),
+            ([r"breakup"],                           Skills.breakup),
+            ([r"bored"],                             Skills.bored),
+            ([r"hello buddy", r"hello jarvis"],       Skills.greet),
+            ([r"you ready", r"are you ready"],        Skills.status),
+            ([r"how are you"],                       Skills.how_are_you),
+            ([r"your creator", r"who made you"],      Skills.about_creator),
+            ([r"who are you"],                       Skills.who_are_you),
+            ([r"thank you", r"thanks"],               Skills.thank_you),
         ]
 
     def dispatch(self, query: str):
+        query_lower = query.lower()
         for keywords, handler in self.INTENT_MAP:
-            if any(kw in query for kw in keywords):
+            if any(re.search(rf"\b{kw}\b", query_lower) for kw in keywords):
                 handler(speech=self.speech, ai=self.ai, query=query)
                 return
         print(f"[ROUTER] No intent matched → sending to AI: '{query}'")
