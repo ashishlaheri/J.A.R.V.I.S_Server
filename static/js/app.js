@@ -690,21 +690,52 @@
     function initSecurityPanel() {
         const secToggleBtn = $('#btn-security-toggle');
         const secPanel     = $('#security-panel');
+        const secBackdrop  = $('#security-backdrop');
         const ssViewer     = $('#screenshot-viewer');
         const ssImg        = $('#screenshot-img');
         const ssTime       = $('#screenshot-time');
         const closeSSBtn   = $('#close-screenshot');
 
-        if (!secToggleBtn || !secPanel) return;
+        if (!secToggleBtn || !secPanel || !secBackdrop) return;
+
+        function openSecurityPanel() {
+            secPanel.classList.remove('hidden');
+            secBackdrop.classList.remove('hidden');
+            secToggleBtn.classList.add('active');
+            if (navigator.vibrate) navigator.vibrate(15);
+            sfxButtonTap();
+        }
+
+        function closeSecurityPanel() {
+            secPanel.classList.add('hidden');
+            secBackdrop.classList.add('hidden');
+            secToggleBtn.classList.remove('active');
+            if (navigator.vibrate) navigator.vibrate(10);
+        }
 
         // Toggle panel open/close
         secToggleBtn.addEventListener('click', () => {
-            const isHidden = secPanel.classList.contains('hidden');
-            secPanel.classList.toggle('hidden', !isHidden);
-            secToggleBtn.classList.toggle('active', isHidden);
-            if (navigator.vibrate) navigator.vibrate(15);
-            sfxButtonTap();
+            if (secPanel.classList.contains('hidden')) {
+                openSecurityPanel();
+            } else {
+                closeSecurityPanel();
+            }
         });
+
+        // Close when clicking backdrop
+        secBackdrop.addEventListener('click', closeSecurityPanel);
+
+        // Close on swipe down or handle click
+        const handle = document.querySelector('.security-sheet-handle');
+        if (handle) {
+            handle.addEventListener('click', closeSecurityPanel);
+            let startY = 0;
+            secPanel.addEventListener('touchstart', (e) => startY = e.touches[0].clientY, {passive: true});
+            secPanel.addEventListener('touchend', (e) => {
+                const endY = e.changedTouches[0].clientY;
+                if (endY - startY > 60 && e.target.closest('.security-panel')) closeSecurityPanel();
+            }, {passive: true});
+        }
 
         // Security command labels (shown in chat)
         const cmdLabels = {
@@ -768,12 +799,14 @@
         const ssImg    = $('#screenshot-img');
         const ssTime   = $('#screenshot-time');
         const secPanel = $('#security-panel');
+        const secBackdrop = $('#security-backdrop');
 
         if (!ssViewer || !ssImg) return;
 
         // Make sure the security panel is visible
         if (secPanel && secPanel.classList.contains('hidden')) {
             secPanel.classList.remove('hidden');
+            if (secBackdrop) secBackdrop.classList.remove('hidden');
             const toggleBtn = $('#btn-security-toggle');
             if (toggleBtn) toggleBtn.classList.add('active');
         }
