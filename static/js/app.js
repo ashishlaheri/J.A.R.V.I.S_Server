@@ -275,6 +275,7 @@
                         addMessage('jarvis', data.text, true);
                         sfxMessage();
                         if (data.audio) playAudio(data.audio);
+                        else setOrbState('idle');
                         if (data.action) handleAction(data.action);
                         break;
 
@@ -292,6 +293,7 @@
                     case 'agent_data':
                         // Data from local agent (screenshots, status)
                         removeProcessing();
+                        setOrbState('idle');
                         if (data.subtype === 'screenshot' && data.image) {
                             showScreenshot(data.image);
                             addMessage('jarvis', '📸 Live screenshot received from your PC, Sir.', true);
@@ -443,8 +445,7 @@
     }
 
     function removeProcessing() {
-        const el = chatArea.querySelector('.processing-msg');
-        if (el) el.remove();
+        chatArea.querySelectorAll('.processing-msg').forEach(el => el.remove());
     }
 
     function escapeHtml(str) {

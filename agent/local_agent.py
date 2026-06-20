@@ -482,6 +482,8 @@ def disable_wifi() -> str:
         )
         if result.returncode == 0:
             return "Wi-Fi disabled on your PC, Sir."
+        if "elevation" in result.stderr or "elevation" in result.stdout:
+            return "Wi-Fi disable failed: The local agent must be run as Administrator, Sir."
         return f"Wi-Fi disable failed: {result.stderr.strip() or 'Check adapter name'}"
     except Exception as e:
         return f"WiFi disable error: {e}"
@@ -496,7 +498,9 @@ def enable_wifi() -> str:
         )
         if result.returncode == 0:
             return "Wi-Fi re-enabled on your PC, Sir."
-        return f"Wi-Fi enable failed: {result.stderr.strip()}"
+        if "elevation" in result.stderr or "elevation" in result.stdout:
+            return "Wi-Fi enable failed: The local agent must be run as Administrator, Sir."
+        return f"Wi-Fi enable failed: {result.stderr.strip() or 'Check adapter name'}"
     except Exception as e:
         return f"WiFi enable error: {e}"
 
