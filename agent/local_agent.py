@@ -25,8 +25,19 @@ from pathlib import Path
 
 # Force UTF-8 output on Windows to avoid codec crashes
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    if sys.stdout is not None:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if sys.stderr is not None:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# If running under pythonw (no console), sys.stdout is None. 
+# print() will crash unless we mock it.
+if sys.stdout is None:
+    class DummyStream:
+        def write(self, *args, **kwargs): pass
+        def flush(self, *args, **kwargs): pass
+    sys.stdout = DummyStream()
+    sys.stderr = DummyStream()
 
 # Load .env from agent directory
 env_path = Path(__file__).parent / '.env'

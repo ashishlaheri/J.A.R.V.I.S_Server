@@ -24,19 +24,21 @@ if not exist "%JARVIS_DIR%agent\.env" (
     echo.
 )
 
-echo [1/2] Starting Local Web Agent (Background)...
-start "JARVIS-LocalAgent" /min cmd /c "cd /d "%JARVIS_DIR%agent" & python local_agent.py"
+echo [1/2] Starting Local Web Agent (Hidden Background Process)...
+cd /d "%JARVIS_DIR%agent"
+start "" wscript.exe run_hidden.vbs
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to start Local Agent.
 ) else (
-    echo       OK - Local Agent started.
+    echo       OK - Local Agent started silently.
 )
 
 :: Small delay so the two processes don't fight over resources
 timeout /t 3 /nobreak >nul
 
-echo [2/2] Starting Desktop Voice Assistant...
-start "JARVIS-Desktop" cmd /k "cd /d "%JARVIS_DIR%" & python jarvis.py"
+echo [2/2] Starting Desktop Voice Assistant (Visible Console)...
+cd /d "%JARVIS_DIR%"
+start "JARVIS-Desktop" cmd /k "python jarvis.py"
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to start Desktop Jarvis.
 ) else (

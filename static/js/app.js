@@ -661,6 +661,7 @@
 
         // ── HUD Radial Dialer Logic ──
         const hudDialer = $('#hud-dialer');
+        const dialerBackdrop = $('#dialer-backdrop');
         const dialerSegments = document.querySelectorAll('.dialer-segment');
         let longPressTimer = null;
         let isDialerActive = false;
@@ -684,6 +685,7 @@
                 isDialerActive = true;
                 window._dialerUsed = true;
                 if (hudDialer) hudDialer.classList.add('active');
+                if (dialerBackdrop) dialerBackdrop.classList.add('active');
                 if (navigator.vibrate) navigator.vibrate(50);
                 sfxConnect(); // Sci-fi sound for dialer open
             }, 400);
@@ -742,6 +744,7 @@
             
             isDialerActive = false;
             if (hudDialer) hudDialer.classList.remove('active');
+            if (dialerBackdrop) dialerBackdrop.classList.remove('active');
             
             if (triggerAction && currentHoveredSegment) {
                 const action = currentHoveredSegment.dataset.action;
