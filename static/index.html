@@ -332,6 +332,22 @@
         </div>
     </div>
 
+    <!-- ═════════════════ FILE EXPLORER MODAL ═════════════════ -->
+    <div id="file-explorer-modal" class="hidden">
+        <div class="fe-header">
+            <button id="fe-btn-up" class="fe-btn" title="Go Up Folder">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            </button>
+            <div id="fe-current-path">Loading...</div>
+            <button id="fe-btn-close" class="fe-btn" title="Close Explorer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div id="fe-list">
+            <!-- Items injected by JS -->
+        </div>
+    </div>
+
     <!-- Notification Toast -->
     <div id="notification-toast" class="notification-toast hidden">
         <div class="toast-icon">🔔</div>

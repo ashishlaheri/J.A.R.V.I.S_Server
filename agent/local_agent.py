@@ -740,8 +740,8 @@ async def fetch_and_upload_file(ws, filepath: str) -> str:
         import base64
         import mimetypes
         
-        # Remove surrounding quotes if user provided them
-        filepath = filepath.strip("\"'")
+        # Remove surrounding quotes and spaces if user provided them
+        filepath = filepath.strip().strip("\"'").strip()
         
         if not os.path.exists(filepath):
             return f"File not found on PC: {filepath}"
@@ -778,6 +778,53 @@ async def fetch_and_upload_file(ws, filepath: str) -> str:
         return f"File '{filename}' ({size_mb:.1f}MB) sent to your phone, Sir."
     except Exception as e:
         return f"File fetch error: {e}"
+
+
+async def list_directory(ws, dir_path: str = "") -> str:
+    """Scan a directory and return its contents as JSON over WebSocket."""
+    import os
+    
+    # Default to user home directory if no path provided
+    if not dir_path or not dir_path.strip():
+        dir_path = os.path.expanduser("~")
+        
+    dir_path = dir_path.strip().strip("\"'").strip()
+    
+    if not os.path.exists(dir_path):
+        return f"Directory not found: {dir_path}"
+        
+    if not os.path.isdir(dir_path):
+        return f"Path is not a directory: {dir_path}"
+        
+    try:
+        items = []
+        for entry in os.scandir(dir_path):
+            try:
+                is_dir = entry.is_dir()
+                size = entry.stat().st_size if not is_dir else 0
+                items.append({
+                    "name": entry.name,
+                    "is_dir": is_dir,
+                    "size": size,
+                    "path": entry.path
+                })
+            except Exception:
+                # Skip files we don't have permission to stat
+                pass
+                
+        # Sort folders first, then alphabetically
+        items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+        
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "directory_listing",
+            "path": dir_path,
+            "items": items
+        }))
+        
+        return f"Listed directory: {dir_path}"
+    except Exception as e:
+        return f"Directory scan error: {e}"
 
 
 def execute_command(command: str, target: str = "") -> str:
@@ -987,6 +1034,8 @@ async def connect_and_run():
                                     result = await take_webcam_snapshot_and_upload(ws)
                                 elif command in ("fetch_file", "download_file", "get_file"):
                                     result = await fetch_and_upload_file(ws, target)
+                                elif command in ("list_directory", "ls", "dir"):
+                                    result = await list_directory(ws, target)
                                 else:
                                     result = execute_command(command, target)
                                 print(f"[RESULT]  {result}")

@@ -316,6 +316,8 @@
                         } else if (data.subtype === 'file_transfer' && data.file_data) {
                             addMessage('jarvis', data.text, true);
                             downloadBase64File(data.file_data, data.filename, data.mime_type);
+                        } else if (data.subtype === 'directory_listing') {
+                            renderDirectory(data.path, data.items);
                         } else if (data.text) {
                             addMessage('jarvis', data.text, true);
                         }
@@ -943,6 +945,8 @@
             let label = cmdLabels[cmd];
             if (!label && actualCmd === 'fetch_file') {
                 label = `📁 Fetching file from your PC, Sir.`;
+            } else if (!label && actualCmd === 'list_directory') {
+                label = `📂 Browsing your PC files, Sir.`;
             } else if (!label) {
                 label = `Executing ${cmd} on your PC...`;
             }
@@ -1151,15 +1155,93 @@
         }
     }
 
+    // ═════════════════ FILE EXPLORER MODAL ═════════════════
+    const feModal = $('#file-explorer-modal');
+    const feBtnClose = $('#fe-btn-close');
+    const feBtnUp = $('#fe-btn-up');
+    const feCurrentPath = $('#fe-current-path');
+    const feList = $('#fe-list');
+    let currentDirPath = "";
+
+    if (feBtnClose) {
+        feBtnClose.addEventListener('click', () => feModal.classList.add('hidden'));
+    }
+
+    if (feBtnUp) {
+        feBtnUp.addEventListener('click', () => {
+            if (window.triggerSecurityCommand && currentDirPath) {
+                // Remove trailing slash if present, then get parent directory
+                let path = currentDirPath.replace(/\\$/, "").replace(/\/$/, "");
+                let lastSlash = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+                if (lastSlash > 0) {
+                    let parentPath = path.substring(0, lastSlash);
+                    // Special case for Windows drives (e.g., C:\)
+                    if (parentPath.endsWith(':')) parentPath += '\\';
+                    window.triggerSecurityCommand(`list_directory ${parentPath}`);
+                }
+            }
+        });
+    }
+
+    window.renderDirectory = (path, items) => {
+        if (!feModal || !feList || !feCurrentPath) return;
+        
+        currentDirPath = path;
+        feCurrentPath.textContent = path;
+        feList.innerHTML = ''; // Clear previous items
+
+        if (!items || items.length === 0) {
+            feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Empty folder</div>';
+        } else {
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'fe-item';
+                
+                const iconHtml = item.is_dir 
+                    ? '<svg class="fe-icon fe-icon-folder" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>'
+                    : '<svg class="fe-icon fe-icon-file" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>';
+                
+                let sizeStr = '';
+                if (!item.is_dir) {
+                    const mb = item.size / (1024 * 1024);
+                    sizeStr = mb > 1 ? `${mb.toFixed(1)} MB` : `${(item.size / 1024).toFixed(1)} KB`;
+                }
+
+                el.innerHTML = `
+                    ${iconHtml}
+                    <div class="fe-details">
+                        <span class="fe-name">${item.name}</span>
+                        ${sizeStr ? `<span class="fe-size">${sizeStr}</span>` : ''}
+                    </div>
+                `;
+
+                el.addEventListener('click', () => {
+                    if (item.is_dir) {
+                        window.triggerSecurityCommand(`list_directory "${item.path}"`);
+                    } else {
+                        // Check size client-side if we have it
+                        if (item.size > 15 * 1024 * 1024) {
+                            alert("This file is larger than 15MB and cannot be safely downloaded over WebSocket.");
+                            return;
+                        }
+                        feModal.classList.add('hidden'); // Close modal on download
+                        window.triggerSecurityCommand(`fetch_file "${item.path}"`);
+                    }
+                });
+
+                feList.appendChild(el);
+            });
+        }
+        
+        feModal.classList.remove('hidden');
+    };
+
     // Custom logic for the fetch file button (in security panel)
     const fetchFileBtn = $('#btn-fetch-file');
     if (fetchFileBtn) {
         fetchFileBtn.addEventListener('click', () => {
-            const filepath = prompt("Enter the absolute path to the file on your PC (Max 15MB):");
-            if (filepath) {
-                if (window.triggerSecurityCommand) {
-                    window.triggerSecurityCommand(`fetch_file ${filepath}`);
-                }
+            if (window.triggerSecurityCommand) {
+                window.triggerSecurityCommand(`list_directory`);
             }
         });
     }
