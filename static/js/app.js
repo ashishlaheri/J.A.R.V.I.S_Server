@@ -943,16 +943,21 @@
                 setTimeout(() => btn.classList.remove('loading'), 8000);
             }
 
+            // Split command if it has arguments (like 'open_app vscode')
+            const parts = cmd.split(' ');
+            const actualCmd = parts[0];
+            const target = parts.slice(1).join(' ');
+
             // Send command to cloud server → forwarded to local agent
             ws.send(JSON.stringify({
                 type: 'action',
                 skill: 'security',
                 text: cmd,
-                command: cmd,
+                command: actualCmd,
                 action: {
                     type: 'local_command',
-                    command: cmd,
-                    target: ''
+                    command: actualCmd,
+                    target: target
                 }
             }));
 

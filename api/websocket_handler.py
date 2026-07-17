@@ -234,9 +234,9 @@ async def _handle_agent_data(ws: WebSocket, data: dict):
     # Broadcast to all web UI clients (everyone except the agent socket itself)
     broadcast_payload = {"type": "agent_data", "subtype": subtype}
 
-    if subtype == "screenshot":
+    if subtype in ("screenshot", "webcam"):
         broadcast_payload["image"] = data.get("image", "")
-        broadcast_payload["text"] = "Live screenshot from your PC, Sir."
+        broadcast_payload["text"] = "Live image from your PC, Sir."
     elif subtype == "status":
         broadcast_payload["text"] = data.get("text", "")
     else:
@@ -261,11 +261,19 @@ async def _handle_action(ws: WebSocket, skill: str, raw_data: dict = None):
                 await ws.send_json({"type": "agent_data", "text": "Local agent is offline, Sir. Action cancelled."})
                 return
                 
+            # Extract command and target accurately
             command = raw_data.get("command", "") or raw_data.get("text", "")
+            target = ""
+            nested_action = raw_data.get("action", {})
+            if isinstance(nested_action, dict):
+                target = nested_action.get("target", "")
+                if nested_action.get("command"):
+                    command = nested_action.get("command")
+
             action_payload = {
                 "type": "response",
                 "text": f"Security command '{command}' sent to your PC.",
-                "action": {"type": "local_command", "command": command, "target": ""}
+                "action": {"type": "local_command", "command": command, "target": target}
             }
             # Send specifically to agent clients
             for agent_ws in agent_clients:
