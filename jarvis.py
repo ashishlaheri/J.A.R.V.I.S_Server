@@ -203,18 +203,33 @@ class SpeechEngine:
     def listen(self, prompt: str = None, timeout: int = 8) -> str:
         if prompt:
             self.speak(prompt)
-        with sr.Microphone() as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=0.2)
-            print("[JARVIS] Listening...")
+        # Retry once on failure (Google API can hiccup)
+        for attempt in range(2):
             try:
-                audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=12)
-                query = self.recognizer.recognize_google(audio, language='en-in')
-                print(f"[USER]   {query}")
-                return query.lower()
+                with sr.Microphone() as source:
+                    self.recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                    if attempt == 0:
+                        print("[JARVIS] Listening...")
+                    audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=12)
+                    query = self.recognizer.recognize_google(audio, language='en-in')
+                    print(f"[USER]   {query}")
+                    return query.lower()
             except sr.WaitTimeoutError:
                 return "none"
-            except Exception:
+            except sr.UnknownValueError:
+                # Heard noise but couldn't parse speech
                 return "none"
+            except sr.RequestError as e:
+                # Google API down — retry once
+                if attempt == 0:
+                    print(f"[JARVIS] Speech API error, retrying... ({e})")
+                    continue
+                print(f"[JARVIS] Speech API failed after retry: {e}")
+                return "none"
+            except Exception as e:
+                print(f"[JARVIS] Mic error: {e}")
+                return "none"
+        return "none"
 
 # ════════════════════════════════════════════════════════════════
 #  SKILLS
@@ -553,51 +568,57 @@ class JarvisCore:
         ─────────────────
         Once 'Hey Jarvis' is heard, Jarvis stays fully active and keeps
         listening for back-to-back commands — no need to say 'Hey Jarvis'
-        again each time. Goes passive after 3 silent timeouts (~18 seconds).
+        again each time. Goes passive after 3 silent timeouts (~24 seconds).
 
         MID-SPEECH COMMANDS: If you interrupt Jarvis with a non-stop phrase,
         speech.pending_command is set and routed directly without another listen().
         """
         self.speech.speak("Yes Sir?")
         silent_count = 0
-        MAX_SILENCE  = 3   # 3 timeouts (~18 sec) before going passive — less aggressive
+        MAX_SILENCE  = 3   # 3 timeouts before going passive
 
         EXIT_PHRASES = ["sleep", "goodbye", "bye", "stop listening",
                         "that's all", "thats all", "go to sleep", "stand by",
                         "dismiss", "thank you goodbye", "thanks goodbye"]
 
         while True:
-            # ── Check if user spoke mid-last-response ─────────────
-            if self.speech.pending_command:
-                query = self.speech.pending_command
-                self.speech.pending_command = None
-                print(f"[USER - mid-speech] {query}")
-            else:
-                query = self.speech.listen(timeout=6)
+            try:
+                # ── Check if user spoke mid-last-response ─────────────
+                if self.speech.pending_command:
+                    query = self.speech.pending_command
+                    self.speech.pending_command = None
+                    print(f"[USER - mid-speech] {query}")
+                else:
+                    query = self.speech.listen(timeout=8)
 
-            # ── Silent / didn't hear anything ─────────────────────
-            if query == "none":
-                silent_count += 1
-                if silent_count >= MAX_SILENCE:
-                    print("[JARVIS] No input detected — returning to passive mode.")
-                    self.speech.speak("Going passive. Say 'Hey Jarvis' when you need me.")
+                # ── Silent / didn't hear anything ─────────────────────
+                if query == "none":
+                    silent_count += 1
+                    if silent_count >= MAX_SILENCE:
+                        print("[JARVIS] No input detected — returning to passive mode.")
+                        self.speech.speak("Going passive. Say 'Hey Jarvis' when you need me.")
+                        break
+                    # Stay quiet on first silence — only nudge after second
+                    if silent_count == 2:
+                        self.speech.speak("Still here.")
+                    continue
+
+                # ── Got a real command — reset silence counter ─────────
+                silent_count = 0
+
+                # ── Exit / dismiss phrases → go back to wake word mode ─
+                if any(phrase in query for phrase in EXIT_PHRASES):
+                    self.speech.speak("Standing by.")
                     break
-                # Stay quiet on first silence — only nudge after second
-                if silent_count == 2:
-                    self.speech.speak("Still here.")
+
+                # ── Normal command → dispatch, then loop back ──────────
+                self.router.dispatch(query)
+                print("[JARVIS] Active — listening for next command...")
+
+            except Exception as e:
+                # Catch ANY crash in the conversation loop and recover
+                print(f"[JARVIS] Conversation error (recovering): {e}")
                 continue
-
-            # ── Got a real command — reset silence counter ─────────
-            silent_count = 0
-
-            # ── Exit / dismiss phrases → go back to wake word mode ─
-            if any(phrase in query for phrase in EXIT_PHRASES):
-                self.speech.speak("Standing by.")
-                break
-
-            # ── Normal command → dispatch, then loop back ──────────
-            self.router.dispatch(query)
-            print("[JARVIS] Active — listening for next command...")
 
     def start(self):
         self._play_intro()

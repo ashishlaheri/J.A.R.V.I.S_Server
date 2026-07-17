@@ -3,12 +3,13 @@
 import json
 import base64
 from fastapi import WebSocket, WebSocketDisconnect
-from api.auth import verify_token
+from api.auth import verify_token, create_token
 from core.ai_brain import AIBrain
 from core.intent_router import IntentRouter
 from core.tts_engine import generate_speech
 from skills import weather, reminders, memory, news
 from skills.time_date import get_time, get_date, get_briefing_intro
+from config import settings
 
 # Shared brain instance (per-connection would waste memory)
 brain = AIBrain()
@@ -16,6 +17,8 @@ router = IntentRouter(brain)
 
 # Track connected clients for broadcasting notifications
 connected_clients: list[WebSocket] = []
+# Track which clients are local agents (vs web browsers)
+agent_clients: set[WebSocket] = set()
 
 
 async def handle_websocket(ws: WebSocket):
@@ -48,6 +51,26 @@ async def handle_websocket(ws: WebSocket):
             msg_type = data.get("type", "chat")
             text = data.get("text", "").strip()
 
+            # Handle ping/pong keepalive (from both web UI and local agent)
+            if msg_type == "ping":
+                await ws.send_json({"type": "pong"})
+                continue
+
+            # Handle agent registration
+            if msg_type == "agent_hello":
+                agent_clients.add(ws)
+                print(f"[WS] Local agent registered. Agents online: {len(agent_clients)}")
+                await ws.send_json({"type": "agent_registered"})
+                continue
+
+            # Handle token refresh request (from local agent)
+            if msg_type == "refresh_token":
+                new_token = create_token(settings.JARVIS_PASSWORD)
+                if new_token:
+                    await ws.send_json({"type": "new_token", "token": new_token})
+                    print("[WS] Token refreshed for agent.")
+                continue
+
             if not text and msg_type != "agent_data":
                 continue
 
@@ -77,7 +100,8 @@ async def handle_websocket(ws: WebSocket):
     finally:
         if ws in connected_clients:
             connected_clients.remove(ws)
-        print(f"[WS] Client disconnected. Total: {len(connected_clients)}")
+        agent_clients.discard(ws)
+        print(f"[WS] Client disconnected. Total: {len(connected_clients)}, Agents: {len(agent_clients)}")
 
 
 async def _handle_chat(ws: WebSocket, text: str):
@@ -175,7 +199,7 @@ async def _handle_chat(ws: WebSocket, text: str):
             response_text = "Standing by, Sir. I'll be here when you need me."
 
         elif intent == "local_command":
-            if len(connected_clients) <= 1:
+            if not agent_clients:
                 await ws.send_json({"type": "agent_data", "text": "Local agent is not connected, Sir. Command cancelled."})
                 return
 
@@ -184,13 +208,12 @@ async def _handle_chat(ws: WebSocket, text: str):
             response_text = f"Sending command to your local agent, Sir."
             action = {"type": "local_command", "command": command, "target": target}
 
-            # Broadcast the command to the local agent
-            for client in connected_clients:
-                if client != ws:
-                    try:
-                        await client.send_json({"type": "response", "text": response_text, "action": action})
-                    except Exception:
-                        pass
+            # Send command specifically to agent clients
+            for agent_ws in agent_clients:
+                try:
+                    await agent_ws.send_json({"type": "response", "text": response_text, "action": action})
+                except Exception:
+                    pass
 
         else:
             # General chat — send to AI
@@ -234,7 +257,7 @@ async def _handle_action(ws: WebSocket, skill: str, raw_data: dict = None):
     try:
         # Security panel commands — broadcast to the local agent
         if skill == "security" and raw_data:
-            if len(connected_clients) <= 1:
+            if not agent_clients:
                 await ws.send_json({"type": "agent_data", "text": "Local agent is offline, Sir. Action cancelled."})
                 return
                 
@@ -244,13 +267,12 @@ async def _handle_action(ws: WebSocket, skill: str, raw_data: dict = None):
                 "text": f"Security command '{command}' sent to your PC.",
                 "action": {"type": "local_command", "command": command, "target": ""}
             }
-            # Send to all OTHER clients (the local agent)
-            for client in connected_clients:
-                if client != ws:
-                    try:
-                        await client.send_json(action_payload)
-                    except Exception:
-                        pass
+            # Send specifically to agent clients
+            for agent_ws in agent_clients:
+                try:
+                    await agent_ws.send_json(action_payload)
+                except Exception:
+                    pass
             # Acknowledge to web client
             await ws.send_json({"type": "status", "state": "processing"})
             return

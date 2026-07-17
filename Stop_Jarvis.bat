@@ -1,20 +1,23 @@
 @echo off
-echo ==============================================
-echo  SHUTTING DOWN J.A.R.V.I.S.
-echo ==============================================
+title J.A.R.V.I.S. Shutdown
+echo ================================================
+echo   SHUTTING DOWN J.A.R.V.I.S.
+echo ================================================
 echo.
 
-echo Terminating Local Web Agent (local_agent.py)...
-taskkill /F /FI "WINDOWTITLE eq JARVIS Local Agent*" /T >nul 2>&1
+:: Kill by window title (most reliable)
+echo Stopping Local Agent...
+taskkill /FI "WINDOWTITLE eq JARVIS-LocalAgent*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq JARVIS-Desktop*" /F >nul 2>&1
 
-echo Terminating Desktop Voice Assistant (jarvis.py)...
-taskkill /F /FI "WINDOWTITLE eq JARVIS Desktop*" /T >nul 2>&1
-
-:: Also kill any stray python instances running these specific scripts
-for /f "tokens=2" %%i in ('wmic process where "name='python.exe' and commandline like '%%local_agent.py%%'" get processid ^| findstr [0-9]') do taskkill /F /PID %%i >nul 2>&1
-for /f "tokens=2" %%i in ('wmic process where "name='python.exe' and commandline like '%%jarvis.py%%'" get processid ^| findstr [0-9]') do taskkill /F /PID %%i >nul 2>&1
+:: Also kill any python processes running our specific scripts
+echo Stopping any remaining Jarvis processes...
+for /f "tokens=2 delims=," %%i in ('tasklist /FO CSV /NH ^| findstr /i "python"') do (
+    wmic process where "ProcessId=%%~i" get CommandLine 2>nul | findstr /i "local_agent.py jarvis.py" >nul 2>&1 && taskkill /F /PID %%~i >nul 2>&1
+)
 
 echo.
-echo All Jarvis systems have been safely shut down.
+echo All J.A.R.V.I.S. systems safely shut down.
+echo Your laptop is now running light.
 echo.
 pause

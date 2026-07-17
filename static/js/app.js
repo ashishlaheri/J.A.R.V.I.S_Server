@@ -262,6 +262,13 @@
             sfxConnect();
             // First message: auth token
             ws.send(JSON.stringify({ token }));
+            // Start keepalive ping every 45s to prevent Safari from killing the connection
+            if (window._wsPingInterval) clearInterval(window._wsPingInterval);
+            window._wsPingInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 45000);
         };
 
         ws.onmessage = (event) => {
@@ -271,6 +278,7 @@
                 switch (data.type) {
                     case 'response':
                         removeProcessing();
+                        clearProcessingTimeout();
                         showResponseTime();
                         addMessage('jarvis', data.text, true);
                         sfxMessage();
@@ -283,6 +291,7 @@
                         if (data.state === 'processing') {
                             showProcessing();
                             setOrbState('processing');
+                            startProcessingTimeout();
                         }
                         break;
 
@@ -293,6 +302,7 @@
                     case 'agent_data':
                         // Data from local agent (screenshots, status)
                         removeProcessing();
+                        clearProcessingTimeout();
                         setOrbState('idle');
                         if (data.subtype === 'screenshot' && data.image) {
                             showScreenshot(data.image);
@@ -304,8 +314,13 @@
                         document.querySelectorAll('.sec-btn.loading').forEach(b => b.classList.remove('loading'));
                         break;
 
+                    case 'pong':
+                        // Keepalive response — ignore silently
+                        break;
+
                     case 'error':
                         removeProcessing();
+                        clearProcessingTimeout();
                         addMessage('jarvis', data.message || 'Something went wrong, Sir.');
                         sfxError();
                         // If auth error, clear token and show login
@@ -324,6 +339,7 @@
 
         ws.onclose = (event) => {
             connStatus.classList.remove('connected');
+            if (window._wsPingInterval) clearInterval(window._wsPingInterval);
             if (event.code !== 1000) {
                 showReconnecting(true);
                 scheduleReconnect();
@@ -333,6 +349,22 @@
         ws.onerror = () => {
             connStatus.classList.remove('connected');
         };
+    }
+
+    // Processing timeout — cancel if no response in 30 seconds
+    let processingTimer = null;
+    function startProcessingTimeout() {
+        clearProcessingTimeout();
+        processingTimer = setTimeout(() => {
+            removeProcessing();
+            setOrbState('idle');
+            addMessage('jarvis', '⚠️ No response received, Sir. The local agent may be offline or the command timed out.', true);
+            sfxError();
+            document.querySelectorAll('.sec-btn.loading').forEach(b => b.classList.remove('loading'));
+        }, 30000);
+    }
+    function clearProcessingTimeout() {
+        if (processingTimer) { clearTimeout(processingTimer); processingTimer = null; }
     }
 
     function scheduleReconnect() {

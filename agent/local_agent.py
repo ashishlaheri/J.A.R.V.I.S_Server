@@ -666,6 +666,7 @@ def execute_command(command: str, target: str = "") -> str:
 # ══════════════════════════════════════════════════════
 async def connect_and_run():
     """Single connection attempt. Returns True if should retry, False to exit."""
+    global TOKEN
     try:
         import websockets
     except ImportError:
@@ -678,14 +679,14 @@ async def connect_and_run():
 
         # Cloudflare requires specific headers to not get 403
         extra_headers = {
-            "User-Agent": "JARVIS-LocalAgent/3.0",
+            "User-Agent": "JARVIS-LocalAgent/3.1",
             "Origin": SERVER.replace("wss://", "https://").replace("ws://", "http://").split("/ws")[0],
         }
 
         async with websockets.connect(
             SERVER,
-            ping_interval=20,
-            ping_timeout=10,
+            ping_interval=30,
+            ping_timeout=15,
             additional_headers=extra_headers,
             open_timeout=15
         ) as ws:
@@ -710,68 +711,102 @@ async def connect_and_run():
                 return False  # Don't retry auth failures
 
             print("[AGENT] Connected and authenticated!")
+
+            # Register as a local agent so the server knows we're not a browser
+            await ws.send(json.dumps({"type": "agent_hello"}))
+
+            # Request a fresh token so we never expire
+            await ws.send(json.dumps({"type": "refresh_token"}))
+
             print("[AGENT] Waiting for commands from cloud...\n")
 
-            # Listen for commands
-            async for raw_msg in ws:
-                try:
-                    data = json.loads(raw_msg)
-                    msg_type = data.get("type", "")
+            # Start heartbeat task to keep connection alive
+            async def heartbeat():
+                while True:
+                    try:
+                        await asyncio.sleep(45)
+                        await ws.send(json.dumps({"type": "ping"}))
+                    except Exception:
+                        break
 
-                    if msg_type == "response" and "action" in data:
-                        action = data["action"]
-                        action_type = action.get("type", "")
+            heartbeat_task = asyncio.create_task(heartbeat())
 
-                        if action_type == "local_command":
-                            command = action.get("command", "")
-                            target = action.get("target", "")
-                            print(f"[COMMAND] {command} -> '{target}'")
+            try:
+                # Listen for commands
+                async for raw_msg in ws:
+                    try:
+                        data = json.loads(raw_msg)
+                        msg_type = data.get("type", "")
 
-                            # screenshot_upload needs ws reference — handle separately
-                            if command in ("screenshot_upload", "see_screen", "live_screenshot"):
-                                result = await take_screenshot_and_upload(ws)
-                            else:
-                                result = execute_command(command, target)
-                            print(f"[RESULT]  {result}")
+                        # Handle token refresh response
+                        if msg_type == "new_token":
+                            new_token = data.get("token", "")
+                            if new_token:
+                                TOKEN = new_token
+                                _save_token(new_token)
+                                print("[AGENT] Token auto-refreshed and saved.")
+                            continue
 
-                            # Send result text back to cloud server
-                            await ws.send(json.dumps({
-                                "type": "agent_response",
-                                "text": result
-                            }))
+                        # Ignore pong responses
+                        if msg_type in ("pong", "agent_registered"):
+                            continue
 
-                        elif action_type == "open_url":
-                            url = action.get("url", "")
-                            if url:
-                                if not url.startswith("http"):
-                                    url = "https://" + url
-                                webbrowser.open(url)
-                                print(f"[COMMAND] Opened URL: {url}")
+                        if msg_type == "response" and "action" in data:
+                            action = data["action"]
+                            action_type = action.get("type", "")
 
-                    elif msg_type == "notification":
-                        title = data.get("title", "Notice")
-                        body = data.get("body", "")
-                        print(f"[REMINDER] {title}: {body}")
-                        # Show Windows toast notification
-                        try:
-                            ps = (
-                                f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;'
-                                f'$notify = New-Object System.Windows.Forms.NotifyIcon;'
-                                f'$notify.Icon = [System.Drawing.SystemIcons]::Information;'
-                                f'$notify.Visible = $true;'
-                                f'$notify.ShowBalloonTip(5000, "{title}", "{body}", [System.Windows.Forms.ToolTipIcon]::Info)'
-                            )
-                            subprocess.Popen(
-                                ['powershell', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                            )
-                        except Exception:
-                            pass
+                            if action_type == "local_command":
+                                command = action.get("command", "")
+                                target = action.get("target", "")
+                                print(f"[COMMAND] {command} -> '{target}'")
 
-                except json.JSONDecodeError:
-                    pass
-                except Exception as e:
-                    print(f"[AGENT] Message error: {e}")
+                                # screenshot_upload needs ws reference — handle separately
+                                if command in ("screenshot_upload", "see_screen", "live_screenshot"):
+                                    result = await take_screenshot_and_upload(ws)
+                                else:
+                                    result = execute_command(command, target)
+                                print(f"[RESULT]  {result}")
+
+                                # Send result text back to cloud server
+                                await ws.send(json.dumps({
+                                    "type": "agent_response",
+                                    "text": result
+                                }))
+
+                            elif action_type == "open_url":
+                                url = action.get("url", "")
+                                if url:
+                                    if not url.startswith("http"):
+                                        url = "https://" + url
+                                    webbrowser.open(url)
+                                    print(f"[COMMAND] Opened URL: {url}")
+
+                        elif msg_type == "notification":
+                            title = data.get("title", "Notice")
+                            body = data.get("body", "")
+                            print(f"[REMINDER] {title}: {body}")
+                            # Show Windows toast notification
+                            try:
+                                ps = (
+                                    f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;'
+                                    f'$notify = New-Object System.Windows.Forms.NotifyIcon;'
+                                    f'$notify.Icon = [System.Drawing.SystemIcons]::Information;'
+                                    f'$notify.Visible = $true;'
+                                    f'$notify.ShowBalloonTip(5000, "{title}", "{body}", [System.Windows.Forms.ToolTipIcon]::Info)'
+                                )
+                                subprocess.Popen(
+                                    ['powershell', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                                )
+                            except Exception:
+                                pass
+
+                    except json.JSONDecodeError:
+                        pass
+                    except Exception as e:
+                        print(f"[AGENT] Message error: {e}")
+            finally:
+                heartbeat_task.cancel()
 
     except OSError as e:
         print(f"[AGENT] Connection failed: {e}")
@@ -790,10 +825,32 @@ async def connect_and_run():
     return True  # Retry
 
 
+def _save_token(new_token: str):
+    """Write the refreshed token back to agent/.env so it persists across restarts."""
+    try:
+        env_file = Path(__file__).parent / '.env'
+        lines = []
+        token_found = False
+        if env_file.exists():
+            with open(env_file) as f:
+                for line in f:
+                    if line.strip().startswith('JARVIS_TOKEN='):
+                        lines.append(f'JARVIS_TOKEN={new_token}\n')
+                        token_found = True
+                    else:
+                        lines.append(line)
+        if not token_found:
+            lines.append(f'JARVIS_TOKEN={new_token}\n')
+        with open(env_file, 'w') as f:
+            f.writelines(lines)
+    except Exception as e:
+        print(f"[AGENT] Could not save token: {e}")
+
+
 async def main():
     """Main entry point."""
     print("=" * 60)
-    print("  J.A.R.V.I.S. Local Agent v3.0")
+    print("  J.A.R.V.I.S. Local Agent v3.1")
     print("  PC Control Bridge")
     print("=" * 60)
     print(f"  Server: {SERVER}")
@@ -829,7 +886,8 @@ async def main():
             break
         print(f"[AGENT] Reconnecting in {retry_delay}s...")
         await asyncio.sleep(retry_delay)
-        retry_delay = min(retry_delay * 2, 30)  # Max 30s backoff
+        # Cap backoff at 15s (was 30s) for faster recovery
+        retry_delay = min(retry_delay * 2, 15)
 
 
 if __name__ == "__main__":
