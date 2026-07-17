@@ -317,7 +317,7 @@
                             addMessage('jarvis', data.text, true);
                             downloadBase64File(data.file_data, data.filename, data.mime_type);
                         } else if (data.subtype === 'directory_listing') {
-                            renderDirectory(data.path, data.items);
+                            renderDirectory(data.path, data.items, data.error);
                         } else if (data.text) {
                             addMessage('jarvis', data.text, true);
                         }
@@ -1177,20 +1177,23 @@
                     let parentPath = path.substring(0, lastSlash);
                     // Special case for Windows drives (e.g., C:\)
                     if (parentPath.endsWith(':')) parentPath += '\\';
+                    feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Loading...</div>';
                     window.triggerSecurityCommand(`list_directory ${parentPath}`);
                 }
             }
         });
     }
 
-    window.renderDirectory = (path, items) => {
+    window.renderDirectory = (path, items, error) => {
         if (!feModal || !feList || !feCurrentPath) return;
         
         currentDirPath = path;
         feCurrentPath.textContent = path;
         feList.innerHTML = ''; // Clear previous items
 
-        if (!items || items.length === 0) {
+        if (error) {
+            feList.innerHTML = `<div style="text-align:center; padding: 2rem; color: #ff4757;">⚠️ ${error}</div>`;
+        } else if (!items || items.length === 0) {
             feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Empty folder</div>';
         } else {
             items.forEach(item => {
@@ -1217,6 +1220,7 @@
 
                 el.addEventListener('click', () => {
                     if (item.is_dir) {
+                        feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Loading...</div>';
                         window.triggerSecurityCommand(`list_directory "${item.path}"`);
                     } else {
                         // Check size client-side if we have it
@@ -1241,6 +1245,8 @@
     if (fetchFileBtn) {
         fetchFileBtn.addEventListener('click', () => {
             if (window.triggerSecurityCommand) {
+                if (feList) feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Loading...</div>';
+                feModal.classList.remove('hidden');
                 window.triggerSecurityCommand(`list_directory`);
             }
         });

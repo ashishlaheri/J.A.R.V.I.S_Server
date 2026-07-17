@@ -819,11 +819,19 @@ async def list_directory(ws, dir_path: str = "") -> str:
             "type": "agent_data",
             "subtype": "directory_listing",
             "path": dir_path,
-            "items": items
+            "items": items,
+            "error": ""
         }))
         
         return f"Listed directory: {dir_path}"
     except Exception as e:
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "directory_listing",
+            "path": dir_path,
+            "items": [],
+            "error": f"Error scanning directory: {str(e)}"
+        }))
         return f"Directory scan error: {e}"
 
 

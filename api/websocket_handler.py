@@ -247,6 +247,7 @@ async def _handle_agent_data(ws: WebSocket, data: dict):
     elif subtype == "directory_listing":
         broadcast_payload["path"] = data.get("path", "")
         broadcast_payload["items"] = data.get("items", [])
+        broadcast_payload["error"] = data.get("error", "")
         broadcast_payload["text"] = f"Directory contents received."
     else:
         broadcast_payload["text"] = data.get("text", "Data received from agent.")
