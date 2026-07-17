@@ -1163,6 +1163,22 @@
     const feList = $('#fe-list');
     let currentDirPath = "";
 
+    window.requestDirectory = (path) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+            type: 'action', skill: 'security', text: 'list_directory', command: 'list_directory',
+            action: { type: 'local_command', command: 'list_directory', target: path }
+        }));
+    };
+
+    window.requestFileFetch = (path) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+            type: 'action', skill: 'security', text: 'fetch_file', command: 'fetch_file',
+            action: { type: 'local_command', command: 'fetch_file', target: path }
+        }));
+    };
+
     if (feBtnClose) {
         feBtnClose.addEventListener('click', () => feModal.classList.add('hidden'));
     }
@@ -1178,7 +1194,7 @@
                     // Special case for Windows drives (e.g., C:\)
                     if (parentPath.endsWith(':')) parentPath += '\\';
                     feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Loading...</div>';
-                    window.triggerSecurityCommand(`list_directory ${parentPath}`);
+                    window.requestDirectory(parentPath);
                 }
             }
         });
@@ -1221,7 +1237,7 @@
                 el.addEventListener('click', () => {
                     if (item.is_dir) {
                         feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Loading...</div>';
-                        window.triggerSecurityCommand(`list_directory "${item.path}"`);
+                        window.requestDirectory(item.path);
                     } else {
                         // Check size client-side if we have it
                         if (item.size > 15 * 1024 * 1024) {
@@ -1229,7 +1245,7 @@
                             return;
                         }
                         feModal.classList.add('hidden'); // Close modal on download
-                        window.triggerSecurityCommand(`fetch_file "${item.path}"`);
+                        window.requestFileFetch(item.path);
                     }
                 });
 
@@ -1244,10 +1260,10 @@
     const fetchFileBtn = $('#btn-fetch-file');
     if (fetchFileBtn) {
         fetchFileBtn.addEventListener('click', () => {
-            if (window.triggerSecurityCommand) {
+            if (window.requestDirectory) {
                 if (feList) feList.innerHTML = '<div style="text-align:center; padding: 2rem; color: #888;">Loading...</div>';
                 feModal.classList.remove('hidden');
-                window.triggerSecurityCommand(`list_directory`);
+                window.requestDirectory("");
             }
         });
     }

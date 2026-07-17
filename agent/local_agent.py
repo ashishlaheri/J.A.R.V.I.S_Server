@@ -791,9 +791,23 @@ async def list_directory(ws, dir_path: str = "") -> str:
     dir_path = dir_path.strip().strip("\"'").strip()
     
     if not os.path.exists(dir_path):
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "directory_listing",
+            "path": dir_path,
+            "items": [],
+            "error": f"Directory not found: {dir_path}"
+        }))
         return f"Directory not found: {dir_path}"
         
     if not os.path.isdir(dir_path):
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "directory_listing",
+            "path": dir_path,
+            "items": [],
+            "error": f"Path is not a directory: {dir_path}"
+        }))
         return f"Path is not a directory: {dir_path}"
         
     try:
