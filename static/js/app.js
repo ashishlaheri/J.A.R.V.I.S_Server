@@ -300,13 +300,19 @@
                         break;
 
                     case 'agent_data':
-                        // Data from local agent (screenshots, status)
+                        // Data from local agent (screenshots, status, telemetry)
+                        if (data.subtype === 'telemetry') {
+                            if (window.updateTelemetryHUD) window.updateTelemetryHUD(data);
+                            break; // Do not clear processing state or show message for silent telemetry
+                        }
+                        
                         removeProcessing();
                         clearProcessingTimeout();
                         setOrbState('idle');
-                        if (data.subtype === 'screenshot' && data.image) {
-                            showScreenshot(data.image);
-                            addMessage('jarvis', '📸 Live screenshot received from your PC, Sir.', true);
+                        if ((data.subtype === 'screenshot' || data.subtype === 'webcam') && data.image) {
+                            showScreenshot(data.image, data.subtype);
+                            const msg = data.subtype === 'webcam' ? '📷 Webcam snapshot received, Sir.' : '📸 Live screenshot received from your PC, Sir.';
+                            addMessage('jarvis', msg, true);
                         } else if (data.text) {
                             addMessage('jarvis', data.text, true);
                         }
@@ -905,6 +911,16 @@
             'logoff':            '🚪 Logging off current user on your PC, Sir.',
             'disable_wifi':      '📶 Cutting Wi-Fi connection on your PC, Sir.',
             'running_apps':      '💻 Fetching running apps from your PC...',
+            'media_play':        '⏯️ Toggling media playback, Sir.',
+            'media_next':        '⏭️ Skipping to next track, Sir.',
+            'media_prev':        '⏮️ Going to previous track, Sir.',
+            'mute':              '🔇 Toggling system mute, Sir.',
+            'open_app vscode':   '🚀 Launching VS Code, Sir.',
+            'open_app chrome':   '🚀 Launching Google Chrome, Sir.',
+            'open_app spotify':  '🚀 Launching Spotify, Sir.',
+            'open_app discord':  '🚀 Launching Discord, Sir.',
+            'webcam':            '📷 Capturing snapshot from laptop webcam, Sir.',
+            'get_clipboard':     '📥 Fetching clipboard from your PC, Sir.'
         };
 
         // Shared function to trigger a security command (used by dialer and panel)
@@ -960,7 +976,7 @@
         }
     }
 
-    function showScreenshot(base64Image) {
+    function showScreenshot(base64Image, type='screenshot') {
         const ssViewer = $('#screenshot-viewer');
         const ssImg    = $('#screenshot-img');
         const ssTime   = $('#screenshot-time');
@@ -978,11 +994,167 @@
         }
 
         ssImg.src = `data:image/jpeg;base64,${base64Image}`;
+        
+        // Update header if it's webcam
+        const titleSpan = ssViewer.querySelector('.screenshot-header span');
+        if (titleSpan) titleSpan.textContent = type === 'webcam' ? 'LIVE WEBCAM' : 'LIVE SCREENSHOT';
+        
         if (ssTime) ssTime.textContent = `Captured at ${new Date().toLocaleTimeString()}`;
         ssViewer.classList.remove('hidden');
 
         // Scroll to show it
         ssViewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
+
+    // ═══════════════════════════════════════════════════
+    //  SYSTEM TELEMETRY PANEL
+    // ═══════════════════════════════════════════════════
+    const sysToggleBtn = $('#btn-system-toggle');
+    const sysPanel = $('#system-panel');
+    const sysBackdrop = $('#system-backdrop');
+    
+    if (sysToggleBtn && sysPanel && sysBackdrop) {
+        let sysActive = false;
+        
+        const openSysPanel = () => {
+            sysActive = true;
+            sysPanel.classList.remove('hidden');
+            sysBackdrop.classList.remove('hidden');
+            sysToggleBtn.classList.add('active');
+            triggerSecurityCommand('start_telemetry');
+            if (navigator.vibrate) navigator.vibrate([10, 30]);
+            sfxButtonTap();
+        };
+
+        const closeSysPanel = () => {
+            sysActive = false;
+            sysPanel.classList.add('hidden');
+            sysBackdrop.classList.add('hidden');
+            sysToggleBtn.classList.remove('active');
+            triggerSecurityCommand('stop_telemetry');
+            sfxDeactivate();
+        };
+
+        sysToggleBtn.addEventListener('click', () => sysActive ? closeSysPanel() : openSysPanel());
+        sysBackdrop.addEventListener('click', closeSysPanel);
+        
+        // Swipe down to close
+        let startY = 0;
+        sysPanel.addEventListener('touchstart', (e) => startY = e.touches[0].clientY, {passive: true});
+        sysPanel.addEventListener('touchend', (e) => {
+            if (e.changedTouches[0].clientY - startY > 60) closeSysPanel();
+        }, {passive: true});
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  MEDIA & APPS PANEL
+    // ═══════════════════════════════════════════════════
+    const mediaToggleBtn = $('#btn-media-toggle');
+    const mediaPanel = $('#media-panel');
+    const mediaBackdrop = $('#media-backdrop');
+    
+    if (mediaToggleBtn && mediaPanel && mediaBackdrop) {
+        let mediaActive = false;
+        
+        const openMediaPanel = () => {
+            mediaActive = true;
+            mediaPanel.classList.remove('hidden');
+            mediaBackdrop.classList.remove('hidden');
+            mediaToggleBtn.classList.add('active');
+            if (navigator.vibrate) navigator.vibrate([10, 30]);
+            sfxButtonTap();
+        };
+
+        const closeMediaPanel = () => {
+            mediaActive = false;
+            mediaPanel.classList.add('hidden');
+            mediaBackdrop.classList.add('hidden');
+            mediaToggleBtn.classList.remove('active');
+            sfxDeactivate();
+        };
+
+        mediaToggleBtn.addEventListener('click', () => mediaActive ? closeMediaPanel() : openMediaPanel());
+        mediaBackdrop.addEventListener('click', closeMediaPanel);
+        
+        // Swipe down to close
+        let mStartY = 0;
+        mediaPanel.addEventListener('touchstart', (e) => mStartY = e.touches[0].clientY, {passive: true});
+        mediaPanel.addEventListener('touchend', (e) => {
+            if (e.changedTouches[0].clientY - mStartY > 60) closeMediaPanel();
+        }, {passive: true});
+        
+        // Wire up media controls and app buttons
+        // They use the exact same data-sec-cmd pattern as security buttons!
+        document.querySelectorAll('#media-panel [data-sec-cmd]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cmd = btn.dataset.secCmd;
+                
+                // For media & apps, don't show the big loading state on the button
+                // but do show a quick pulse effect
+                btn.style.transform = 'scale(0.9)';
+                setTimeout(() => btn.style.transform = '', 150);
+                
+                if (window.triggerSecurityCommand) window.triggerSecurityCommand(cmd);
+            });
+        });
+        
+        // Custom logic for the copy to PC clipboard button
+        const copyToPcBtn = $('#btn-copy-to-pc');
+        if (copyToPcBtn) {
+            copyToPcBtn.addEventListener('click', () => {
+                const text = prompt("What text would you like to send to your PC's clipboard?");
+                if (text) {
+                    addMessage('user', `Send to PC: ${text}`);
+                    addMessage('jarvis', '📋 Copying to your PC clipboard, Sir.', true);
+                    ws.send(JSON.stringify({
+                        type: 'action',
+                        skill: 'security',
+                        text: 'set_clipboard',
+                        command: 'set_clipboard',
+                        action: {
+                            type: 'local_command',
+                            command: 'set_clipboard',
+                            target: text
+                        }
+                    }));
+                }
+            });
+        }
+    }
+
+    // Function to update the circular charts
+    window.updateTelemetryHUD = (data) => {
+        // CPU
+        const cpuRing = $('#cpu-ring');
+        const cpuText = $('#cpu-text');
+        if (cpuRing && cpuText && data.cpu !== undefined) {
+            cpuText.textContent = `${Math.round(data.cpu)}%`;
+            cpuRing.style.strokeDasharray = `${data.cpu}, 100`;
+            const parent = cpuRing.closest('.circular-chart');
+            parent.className = 'circular-chart ' + (data.cpu > 80 ? 'red' : data.cpu > 50 ? 'orange' : 'blue');
+        }
+        
+        // RAM
+        const ramRing = $('#ram-ring');
+        const ramText = $('#ram-text');
+        if (ramRing && ramText && data.ram !== undefined) {
+            ramText.textContent = `${Math.round(data.ram)}%`;
+            ramRing.style.strokeDasharray = `${data.ram}, 100`;
+            const parent = ramRing.closest('.circular-chart');
+            parent.className = 'circular-chart ' + (data.ram > 85 ? 'red' : data.ram > 65 ? 'orange' : 'blue');
+        }
+        
+        // BATT
+        const battRing = $('#batt-ring');
+        const battText = $('#batt-text');
+        const battStatus = $('#batt-status');
+        if (battRing && battText && data.battery !== undefined) {
+            battText.textContent = `${Math.round(data.battery)}%`;
+            battRing.style.strokeDasharray = `${data.battery}, 100`;
+            const parent = battRing.closest('.circular-chart');
+            parent.className = 'circular-chart ' + (data.battery < 20 && !data.plugged ? 'red' : data.plugged ? 'green' : 'blue');
+            if (battStatus) battStatus.textContent = data.plugged ? 'CHRG' : 'BATT';
+        }
+    };
 
 })();

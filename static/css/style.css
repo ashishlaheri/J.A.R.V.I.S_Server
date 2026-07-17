@@ -1065,6 +1065,165 @@ html, body {
 /* ═══════════════════════════════════════════════════════
    SECURITY BOTTOM SHEET (Mobile First Layout)
    ═══════════════════════════════════════════════════════ */
+/* ── System Toggle & Button Base ── */
+#btn-system-toggle {
+    border-color: rgba(0, 212, 255, 0.4) !important;
+    color: var(--accent) !important;
+}
+#btn-system-toggle svg { stroke: var(--accent) !important; }
+#btn-system-toggle:hover, #btn-system-toggle.active {
+    background: rgba(0, 212, 255, 0.15) !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.3) !important;
+}
+
+/* ── System Grid & Gauges ── */
+.sys-grid {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 10px 0 30px 0;
+}
+
+.sys-gauge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+
+.circular-chart {
+    display: block;
+    margin: 0 auto;
+    max-width: 80%;
+    max-height: 250px;
+}
+
+.circle-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.05);
+    stroke-width: 2.5;
+}
+
+.circle {
+    fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray 1s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.5s;
+}
+
+.circular-chart.blue .circle { stroke: var(--accent); filter: drop-shadow(0 0 4px rgba(0,212,255,0.5)); }
+.circular-chart.orange .circle { stroke: var(--warning); filter: drop-shadow(0 0 4px rgba(255,165,2,0.5)); }
+.circular-chart.green .circle { stroke: var(--success); filter: drop-shadow(0 0 4px rgba(0,255,136,0.5)); }
+.circular-chart.red .circle { stroke: var(--danger); filter: drop-shadow(0 0 4px rgba(255,71,87,0.5)); }
+
+.sys-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.sys-value {
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sys-title {
+    font-family: var(--font-heading);
+    font-size: 0.5rem;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+/* ── Media Panel ── */
+#btn-media-toggle {
+    border-color: rgba(255, 165, 2, 0.4) !important;
+    color: var(--warning) !important;
+}
+#btn-media-toggle svg { stroke: var(--warning) !important; }
+#btn-media-toggle:hover, #btn-media-toggle.active {
+    background: rgba(255, 165, 2, 0.15) !important;
+    border-color: var(--warning) !important;
+    box-shadow: 0 0 18px rgba(255, 165, 2, 0.3) !important;
+}
+
+.media-controls-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.media-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.media-btn svg { width: 24px; height: 24px; fill: rgba(255,255,255,0.1); stroke: var(--text-primary); }
+.media-btn:hover, .media-btn:active {
+    background: rgba(255,255,255,0.1);
+    transform: scale(1.05);
+}
+.media-play-btn {
+    width: 64px;
+    height: 64px;
+    background: rgba(var(--accent-rgb), 0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.media-play-btn svg { width: 32px; height: 32px; stroke: var(--accent); fill: rgba(0, 212, 255, 0.2); }
+
+.app-launch-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    padding: 10px 15px 30px 15px;
+}
+
+.app-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px 5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.app-btn svg { width: 28px; height: 28px; stroke: var(--text-primary); }
+.app-btn span { font-size: 0.7rem; letter-spacing: 0.5px; }
+.app-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+    color: var(--text-primary);
+}
+
 .security-toggle-btn {
     border-color: rgba(255, 71, 87, 0.4) !important;
     color: #ff4757 !important;

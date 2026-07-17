@@ -20,6 +20,7 @@ import webbrowser
 import platform
 import shutil
 import time
+import psutil
 from datetime import datetime
 from pathlib import Path
 
@@ -343,6 +344,32 @@ def mute_volume() -> str:
         return f"Mute error: {e}"
 
 
+def media_control(action: str) -> str:
+    """Simulate media keys using Windows ctypes."""
+    try:
+        import ctypes
+        VK_MEDIA_NEXT_TRACK = 0xB0
+        VK_MEDIA_PREV_TRACK = 0xB1
+        VK_MEDIA_PLAY_PAUSE = 0xB3
+        
+        key = None
+        if action == "play_pause":
+            key = VK_MEDIA_PLAY_PAUSE
+        elif action == "next":
+            key = VK_MEDIA_NEXT_TRACK
+        elif action == "prev":
+            key = VK_MEDIA_PREV_TRACK
+            
+        if key:
+            # 1 = KEYEVENTF_EXTENDEDKEY, 0 = KeyDown, 2 = KeyUp (3 is extended+up)
+            ctypes.windll.user32.keybd_event(key, 0, 1, 0)
+            ctypes.windll.user32.keybd_event(key, 0, 3, 0)
+            return f"Media {action} executed, Sir."
+        return "Unknown media action."
+    except Exception as e:
+        return f"Media control error: {e}"
+
+
 def lock_pc() -> str:
     """Lock the workstation."""
     try:
@@ -618,6 +645,92 @@ async def take_screenshot_and_upload(ws) -> str:
         return f"Screenshot upload error: {e}"
 
 
+async def take_webcam_snapshot_and_upload(ws) -> str:
+    """Take a webcam snapshot, encode as base64, send to cloud server."""
+    try:
+        import cv2
+        import base64
+        import io
+        from PIL import Image
+
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) # Try DirectShow for fast startup
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(0)
+            
+        if not cap.isOpened():
+            return "Camera could not be accessed, Sir."
+            
+        # Give the camera a moment to warm up
+        await asyncio.sleep(0.5)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            return "Failed to grab a frame from the camera, Sir."
+
+        # Convert BGR (OpenCV) to RGB (PIL)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+        
+        # Resize to manageable size if needed
+        w, h = img.size
+        if w > 1280:
+            ratio = 1280 / w
+            img = img.resize((1280, int(h * ratio)))
+            
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=75)
+        screenshot_bytes = buf.getvalue()
+        
+        img_b64 = base64.b64encode(screenshot_bytes).decode()
+        
+        # Send to cloud server as agent_data
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "webcam",
+            "image": img_b64,
+        }))
+        
+        return "Webcam snapshot captured and sent to your phone, Sir."
+    except ImportError:
+        return "Webcam capture failed. Please run: pip install opencv-python pillow"
+    except Exception as e:
+        return f"Webcam capture error: {e}"
+
+
+def get_clipboard() -> str:
+    """Get the current clipboard text."""
+    try:
+        result = subprocess.run(
+            ['powershell', '-NonInteractive', '-Command', 'Get-Clipboard'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            text = result.stdout.strip()
+            if text:
+                return f"Clipboard: {text}"
+            return "PC clipboard is currently empty, Sir."
+        return "Could not read clipboard."
+    except Exception as e:
+        return f"Clipboard read error: {e}"
+
+
+def set_clipboard(text: str) -> str:
+    """Set the PC clipboard text."""
+    if not text:
+        return "No text provided to copy, Sir."
+    try:
+        # Escape quotes for powershell
+        text_safe = text.replace("'", "''")
+        subprocess.run(
+            ['powershell', '-NonInteractive', '-Command', f"Set-Clipboard -Value '{text_safe}'"],
+            capture_output=True, timeout=5
+        )
+        return f"Text copied to your PC clipboard, Sir."
+    except Exception as e:
+        return f"Clipboard write error: {e}"
+
+
 def execute_command(command: str, target: str = "") -> str:
     """Route a local command to the appropriate handler."""
     command = command.lower().strip()
@@ -633,6 +746,16 @@ def execute_command(command: str, target: str = "") -> str:
         return set_volume(target)
     elif command in ("mute", "unmute", "toggle_mute"):
         return mute_volume()
+    elif command in ("media_play", "media_pause", "play_pause"):
+        return media_control("play_pause")
+    elif command in ("media_next", "next_track"):
+        return media_control("next")
+    elif command in ("media_prev", "prev_track", "previous_track"):
+        return media_control("prev")
+    elif command in ("set_clipboard", "copy_to_pc"):
+        return set_clipboard(target)
+    elif command in ("get_clipboard", "read_clipboard"):
+        return get_clipboard()
     elif command in ("screenshot", "screen_capture", "snap"):
         # Note: screenshot_and_upload is handled separately (needs ws)
         return take_screenshot()
@@ -671,6 +794,30 @@ def execute_command(command: str, target: str = "") -> str:
         return f"Unknown command: {command}, Sir."
 
 
+async def telemetry_loop(ws):
+    """Continuously send hardware telemetry until cancelled."""
+    try:
+        while True:
+            cpu = psutil.cpu_percent(interval=None)
+            ram = psutil.virtual_memory().percent
+            batt = psutil.sensors_battery()
+            batt_percent = batt.percent if batt else 100
+            batt_plugged = batt.power_plugged if batt else True
+            
+            data = {
+                "type": "agent_data",
+                "subtype": "telemetry",
+                "cpu": cpu,
+                "ram": ram,
+                "battery": batt_percent,
+                "plugged": batt_plugged
+            }
+            await ws.send(json.dumps(data))
+            await asyncio.sleep(2.0)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        print(f"[Telemetry] Error: {e}")
 
 # ══════════════════════════════════════════════════════
 #  MAIN AGENT LOOP
@@ -741,6 +888,7 @@ async def connect_and_run():
                         break
 
             heartbeat_task = asyncio.create_task(heartbeat())
+            telemetry_task = None
 
             try:
                 # Listen for commands
@@ -771,9 +919,23 @@ async def connect_and_run():
                                 target = action.get("target", "")
                                 print(f"[COMMAND] {command} -> '{target}'")
 
+                                if command == "start_telemetry":
+                                    if telemetry_task is None or telemetry_task.done():
+                                        telemetry_task = asyncio.create_task(telemetry_loop(ws))
+                                        print("[Telemetry] Started")
+                                    continue
+                                
+                                if command == "stop_telemetry":
+                                    if telemetry_task and not telemetry_task.done():
+                                        telemetry_task.cancel()
+                                        print("[Telemetry] Stopped")
+                                    continue
+
                                 # screenshot_upload needs ws reference — handle separately
                                 if command in ("screenshot_upload", "see_screen", "live_screenshot"):
                                     result = await take_screenshot_and_upload(ws)
+                                elif command in ("webcam", "webcam_snapshot", "take_picture"):
+                                    result = await take_webcam_snapshot_and_upload(ws)
                                 else:
                                     result = execute_command(command, target)
                                 print(f"[RESULT]  {result}")
