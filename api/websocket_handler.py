@@ -239,6 +239,11 @@ async def _handle_agent_data(ws: WebSocket, data: dict):
         broadcast_payload["text"] = "Live image from your PC, Sir."
     elif subtype == "status":
         broadcast_payload["text"] = data.get("text", "")
+    elif subtype == "file_transfer":
+        broadcast_payload["filename"] = data.get("filename", "file")
+        broadcast_payload["mime_type"] = data.get("mime_type", "application/octet-stream")
+        broadcast_payload["file_data"] = data.get("file_data", "")
+        broadcast_payload["text"] = f"File ready for download: {broadcast_payload['filename']}"
     else:
         broadcast_payload["text"] = data.get("text", "Data received from agent.")
 

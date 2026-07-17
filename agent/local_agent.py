@@ -731,6 +731,55 @@ def set_clipboard(text: str) -> str:
         return f"Clipboard write error: {e}"
 
 
+async def fetch_and_upload_file(ws, filepath: str) -> str:
+    """Read a local file, base64 encode it, and send via WebSocket."""
+    if not filepath:
+        return "No file path provided, Sir."
+    try:
+        import os
+        import base64
+        import mimetypes
+        
+        # Remove surrounding quotes if user provided them
+        filepath = filepath.strip("\"'")
+        
+        if not os.path.exists(filepath):
+            return f"File not found on PC: {filepath}"
+            
+        if not os.path.isfile(filepath):
+            return f"Path is not a file: {filepath}"
+            
+        # Check file size (limit to 15MB to prevent WS overflow)
+        size_bytes = os.path.getsize(filepath)
+        size_mb = size_bytes / (1024 * 1024)
+        if size_mb > 15:
+            return f"File is too large ({size_mb:.1f}MB). Maximum is 15MB over WebSocket."
+            
+        # Guess mime type
+        mime_type, _ = mimetypes.guess_type(filepath)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+            
+        filename = os.path.basename(filepath)
+        
+        with open(filepath, 'rb') as f:
+            file_bytes = f.read()
+            
+        file_b64 = base64.b64encode(file_bytes).decode('utf-8')
+        
+        await ws.send(json.dumps({
+            "type": "agent_data",
+            "subtype": "file_transfer",
+            "filename": filename,
+            "mime_type": mime_type,
+            "file_data": file_b64
+        }))
+        
+        return f"File '{filename}' ({size_mb:.1f}MB) sent to your phone, Sir."
+    except Exception as e:
+        return f"File fetch error: {e}"
+
+
 def execute_command(command: str, target: str = "") -> str:
     """Route a local command to the appropriate handler."""
     command = command.lower().strip()
@@ -936,6 +985,8 @@ async def connect_and_run():
                                     result = await take_screenshot_and_upload(ws)
                                 elif command in ("webcam", "webcam_snapshot", "take_picture"):
                                     result = await take_webcam_snapshot_and_upload(ws)
+                                elif command in ("fetch_file", "download_file", "get_file"):
+                                    result = await fetch_and_upload_file(ws, target)
                                 else:
                                     result = execute_command(command, target)
                                 print(f"[RESULT]  {result}")

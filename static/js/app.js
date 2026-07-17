@@ -313,6 +313,9 @@
                             showScreenshot(data.image, data.subtype);
                             const msg = data.subtype === 'webcam' ? '📷 Webcam snapshot received, Sir.' : '📸 Live screenshot received from your PC, Sir.';
                             addMessage('jarvis', msg, true);
+                        } else if (data.subtype === 'file_transfer' && data.file_data) {
+                            addMessage('jarvis', data.text, true);
+                            downloadBase64File(data.file_data, data.filename, data.mime_type);
                         } else if (data.text) {
                             addMessage('jarvis', data.text, true);
                         }
@@ -931,9 +934,19 @@
                 return;
             }
 
+            // Split command if it has arguments (like 'open_app vscode')
+            const parts = cmd.split(' ');
+            const actualCmd = parts[0];
+            const target = parts.slice(1).join(' ');
+
             // Show feedback in chat
-            const label = cmdLabels[cmd] || `Executing ${cmd} on your PC...`;
-            addMessage('user', label.replace(/^[^\s]+ /, ''));
+            let label = cmdLabels[cmd];
+            if (!label && actualCmd === 'fetch_file') {
+                label = `📁 Fetching file from your PC, Sir.`;
+            } else if (!label) {
+                label = `Executing ${cmd} on your PC...`;
+            }
+            addMessage('user', actualCmd === 'fetch_file' ? `Fetch file: ${target}` : label.replace(/^[^\s]+ /, ''));
             addMessage('jarvis', label, true);
 
             // Set loading state on panel button if it exists
@@ -942,11 +955,6 @@
                 btn.classList.add('loading');
                 setTimeout(() => btn.classList.remove('loading'), 8000);
             }
-
-            // Split command if it has arguments (like 'open_app vscode')
-            const parts = cmd.split(' ');
-            const actualCmd = parts[0];
-            const target = parts.slice(1).join(' ');
 
             // Send command to cloud server → forwarded to local agent
             ws.send(JSON.stringify({
@@ -1007,8 +1015,24 @@
         if (ssTime) ssTime.textContent = `Captured at ${new Date().toLocaleTimeString()}`;
         ssViewer.classList.remove('hidden');
 
-        // Scroll to show it
-        ssViewer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (navigator.vibrate) navigator.vibrate([10, 30]);
+    }
+
+    async function downloadBase64File(base64, filename, mimeType) {
+        try {
+            const res = await fetch(`data:${mimeType};base64,${base64}`);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error("Download failed:", e);
+        }
     }
 
     // ═══════════════════════════════════════════════════
@@ -1125,6 +1149,19 @@
                 }
             });
         }
+    }
+
+    // Custom logic for the fetch file button (in security panel)
+    const fetchFileBtn = $('#btn-fetch-file');
+    if (fetchFileBtn) {
+        fetchFileBtn.addEventListener('click', () => {
+            const filepath = prompt("Enter the absolute path to the file on your PC (Max 15MB):");
+            if (filepath) {
+                if (window.triggerSecurityCommand) {
+                    window.triggerSecurityCommand(`fetch_file ${filepath}`);
+                }
+            }
+        });
     }
 
     // Function to update the circular charts
