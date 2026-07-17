@@ -650,7 +650,113 @@
     // ═══════════════════════════════════════════════════
     //  EVENT LISTENERS
     // ═══════════════════════════════════════════════════
-    orb.addEventListener('click', toggleListening);
+        orb.addEventListener('click', (e) => {
+            // Prevent click if we just used the dialer
+            if (window._dialerUsed) {
+                window._dialerUsed = false;
+                return;
+            }
+            toggleListening();
+        });
+
+        // ── HUD Radial Dialer Logic ──
+        const hudDialer = $('#hud-dialer');
+        const dialerSegments = document.querySelectorAll('.dialer-segment');
+        let longPressTimer = null;
+        let isDialerActive = false;
+        let currentHoveredSegment = null;
+        let orbCenter = { x: 0, y: 0 };
+
+        orb.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) return; // ignore multi-touch
+            
+            // Calculate orb center for angle math
+            const rect = orb.getBoundingClientRect();
+            orbCenter = {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2
+            };
+
+            window._dialerUsed = false;
+            
+            // Start long press timer (400ms)
+            longPressTimer = setTimeout(() => {
+                isDialerActive = true;
+                window._dialerUsed = true;
+                if (hudDialer) hudDialer.classList.add('active');
+                if (navigator.vibrate) navigator.vibrate(50);
+                sfxConnect(); // Sci-fi sound for dialer open
+            }, 400);
+        }, { passive: false });
+
+        orb.addEventListener('touchmove', (e) => {
+            if (!isDialerActive) {
+                // If they move their finger before long press triggers, cancel it
+                if (longPressTimer) clearTimeout(longPressTimer);
+                return;
+            }
+
+            e.preventDefault(); // Prevent scrolling while using dialer
+            const touch = e.touches[0];
+            
+            // Calculate angle from center (-180 to 180 degrees)
+            const dx = touch.clientX - orbCenter.x;
+            const dy = touch.clientY - orbCenter.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            
+            // If they are too close to center, don't select anything
+            if (distance < 40) {
+                if (currentHoveredSegment) {
+                    currentHoveredSegment.classList.remove('hover');
+                    currentHoveredSegment = null;
+                }
+                return;
+            }
+
+            let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+            if (angle < 0) angle += 360; // 0 to 360
+
+            // Determine which segment based on angle
+            // Right: 315-45, Bottom: 45-135, Left: 135-225, Top: 225-315
+            let targetSegment = null;
+            if (angle >= 315 || angle < 45) targetSegment = document.querySelector('.segment-right');
+            else if (angle >= 45 && angle < 135) targetSegment = document.querySelector('.segment-bottom');
+            else if (angle >= 135 && angle < 225) targetSegment = document.querySelector('.segment-left');
+            else if (angle >= 225 && angle < 315) targetSegment = document.querySelector('.segment-top');
+
+            // Handle hover state change
+            if (targetSegment !== currentHoveredSegment) {
+                if (currentHoveredSegment) currentHoveredSegment.classList.remove('hover');
+                if (targetSegment) {
+                    targetSegment.classList.add('hover');
+                    sfxButtonTap(); // tick sound
+                    if (navigator.vibrate) navigator.vibrate(10);
+                }
+                currentHoveredSegment = targetSegment;
+            }
+        }, { passive: false });
+
+        const closeDialer = (triggerAction = false) => {
+            if (longPressTimer) clearTimeout(longPressTimer);
+            if (!isDialerActive) return;
+            
+            isDialerActive = false;
+            if (hudDialer) hudDialer.classList.remove('active');
+            
+            if (triggerAction && currentHoveredSegment) {
+                const action = currentHoveredSegment.dataset.action;
+                if (action) triggerSecurityCommand(action);
+            }
+            
+            if (currentHoveredSegment) {
+                currentHoveredSegment.classList.remove('hover');
+                currentHoveredSegment = null;
+            }
+        };
+
+        orb.addEventListener('touchend', (e) => closeDialer(true));
+        orb.addEventListener('touchcancel', () => closeDialer(false));
+        // ── End Dialer Logic ──
 
     sendBtn.addEventListener('click', () => {
         const text = textInput.value.trim();
@@ -798,40 +904,48 @@
             'running_apps':      '💻 Fetching running apps from your PC...',
         };
 
-        // Wire up all security buttons
+        // Shared function to trigger a security command (used by dialer and panel)
+        window.triggerSecurityCommand = (cmd) => {
+            if (!cmd) return;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('jarvis', '⚠️ Not connected to server, Sir. Please reconnect.');
+                return;
+            }
+
+            // Show feedback in chat
+            const label = cmdLabels[cmd] || `Executing ${cmd} on your PC...`;
+            addMessage('user', label.replace(/^[^\s]+ /, ''));
+            addMessage('jarvis', label, true);
+
+            // Set loading state on panel button if it exists
+            const btn = document.querySelector(`.sec-btn[data-sec-cmd="${cmd}"]`);
+            if (btn) {
+                btn.classList.add('loading');
+                setTimeout(() => btn.classList.remove('loading'), 8000);
+            }
+
+            // Send command to cloud server → forwarded to local agent
+            ws.send(JSON.stringify({
+                type: 'action',
+                skill: 'security',
+                text: cmd,
+                command: cmd,
+                action: {
+                    type: 'local_command',
+                    command: cmd,
+                    target: ''
+                }
+            }));
+
+            if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
+            sfxSend();
+        };
+
+        // Wire up all security panel buttons
         document.querySelectorAll('.sec-btn[data-sec-cmd]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const cmd = btn.dataset.secCmd;
-                if (!cmd) return;
-                if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    addMessage('jarvis', '⚠️ Not connected to server, Sir. Please reconnect.');
-                    return;
-                }
-
-                // Show feedback in chat
-                const label = cmdLabels[cmd] || `Executing ${cmd} on your PC...`;
-                addMessage('user', label.replace(/^[^\s]+ /, ''));
-                addMessage('jarvis', label, true);
-
-                // Set loading state
-                btn.classList.add('loading');
-                setTimeout(() => btn.classList.remove('loading'), 8000); // auto-remove after 8s
-
-                // Send command to cloud server → forwarded to local agent
-                ws.send(JSON.stringify({
-                    type: 'action',
-                    skill: 'security',
-                    text: cmd,
-                    command: cmd,
-                    action: {
-                        type: 'local_command',
-                        command: cmd,
-                        target: ''
-                    }
-                }));
-
-                if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
-                sfxSend();
+                triggerSecurityCommand(cmd);
             });
         });
 

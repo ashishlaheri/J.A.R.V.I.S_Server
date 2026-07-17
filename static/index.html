@@ -96,7 +96,36 @@
                 </div>
                 <div class="orb-energy"></div>
             </div>
-            <p class="orb-label" id="orb-label">Tap to speak</p>
+            <p class="orb-label" id="orb-label">Tap or Hold to speak</p>
+
+            <!-- Holographic Radial Dialer -->
+            <div id="hud-dialer" class="hud-dialer hidden">
+                <div class="dialer-ring dialer-ring-1"></div>
+                <div class="dialer-ring dialer-ring-2"></div>
+                <div class="dialer-center"></div>
+                
+                <!-- Dialer Segments (Top, Right, Bottom, Left) -->
+                <div class="dialer-segment segment-top" data-action="screenshot_upload" title="See Screen">
+                    <div class="segment-bg"></div>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span class="segment-label">Screen</span>
+                </div>
+                <div class="dialer-segment segment-right" data-action="lock_now" title="Lock PC">
+                    <div class="segment-bg"></div>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span class="segment-label">Lock</span>
+                </div>
+                <div class="dialer-segment segment-bottom" data-action="alarm" title="Sound Alarm">
+                    <div class="segment-bg"></div>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span class="segment-label">Alarm</span>
+                </div>
+                <div class="dialer-segment segment-left" data-action="disable_wifi" title="Cut WiFi">
+                    <div class="segment-bg"></div>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                    <span class="segment-label">Cut WiFi</span>
+                </div>
+            </div>
         </div>
 
         <!-- Quick Actions -->
